@@ -2,7 +2,7 @@
  * Backplane card - live switch front panel for Home Assistant.
  * Served by the Backplane integration (custom_components/backplane).
  */
-const BP_VERSION = "0.4.0";
+const BP_VERSION = "0.4.1";
 
 const SPEED_COLORS = [
   [10000, "#00e5ff"],
@@ -15,8 +15,14 @@ const IN_COLOR = "#ffd700";
 const GRADE_COLORS = { healthy: "#69f0ae", warning: "#ffb300", critical: "#ff5252" };
 const LEVEL_COLORS = { critical: "#ff5252", warning: "#ffb300", info: "#40c4ff" };
 
+const macName = (m) => m.n || (m.v && m.v !== "random / virtual" ? m.v : "");
 const portLabel = (p) =>
-  p.a || (p.nb && p.nb.name) || (p.mac && p.mac.length <= 3 ? (p.mac.find((m) => m.n) || {}).n : "") || "";
+  p.a || (p.nb && p.nb.name) || (p.mac && p.mac.length <= 3 ? p.mac.map(macName).find(Boolean) : "") || "";
+
+const lagPorts = (item, hass) => {
+  const state = hass && hass.states[item.entity];
+  return ((state && state.attributes.ports) || []).filter((p) => p.k === "lag");
+};
 
 const fmtSince = (ts) => {
   if (!ts) return "-";
@@ -753,7 +759,7 @@ class BackplaneCard extends HTMLElement {
   }
 
   _renderNeighbors(item, eth) {
-    const withNb = eth.filter((p) => p.nb || (p.mac && p.mac.length && p.mac.length <= 3 && p.mac.some((m) => m.n)));
+    const withNb = [...eth, ...lagPorts(item, this._hass)].filter((p) => p.nb || (p.mac && p.mac.length && p.mac.length <= 3 && p.mac.some(macName)));
     const busiest = eth
       .filter((p) => p.up)
       .sort((a, b) => Math.max(b.in, b.out) - Math.max(a.in, a.out))
@@ -763,7 +769,7 @@ class BackplaneCard extends HTMLElement {
           .map(
             (p) => `<div class="li" data-port="${p.i}" data-entity="${esc(item.entity)}">
               <span class="p">${esc(p.n)}</span>
-              <span class="n">${esc(p.nb ? p.nb.name || p.nb.descr || "unknown" : p.mac.filter((m) => m.n).map((m) => m.n).join(", "))}</span>
+              <span class="n">${esc(p.nb ? p.nb.name || p.nb.descr || "unknown" : [...new Set(p.mac.map(macName).filter(Boolean))].join(", "))}</span>
               <span class="r">${esc(p.nb ? p.nb.port || "LLDP" : (p.mac.find((m) => m.ip) || {}).ip || "MAC")}</span></div>`,
           )
           .join("")
@@ -822,7 +828,7 @@ class BackplaneCard extends HTMLElement {
     if (port.mac && port.mac.length) {
       return `<div class="devs"><div class="k" style="font-size:10px;opacity:.6;text-transform:uppercase;letter-spacing:.5px">Devices on this port</div>${port.mac
         .map(
-          (m) => `<div class="li" style="cursor:default"><span class="p" style="min-width:0">●</span><span class="n">${esc(m.n || m.m)}</span><span class="r">${esc(m.ip || (m.n ? m.m : ""))}</span></div>`,
+          (m) => `<div class="li" style="cursor:default"><span class="p" style="min-width:0">●</span><span class="n">${esc(m.n || (m.v ? `${m.v} · ${m.m}` : m.m))}</span><span class="r">${esc(m.ip || (m.n ? m.m : ""))}</span></div>`,
         )
         .join("")}</div>`;
     }

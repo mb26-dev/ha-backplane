@@ -80,6 +80,38 @@ from .snmp import Oid, SnmpClient, SnmpError, SnmpTimeout
 
 _LOGGER = logging.getLogger(__name__)
 
+# Small vendor table (IEEE OUI) for devices Home Assistant does not know
+_OUI = {
+    "00:08:9b": "QNAP",
+    "24:5e:be": "QNAP",
+    "00:11:32": "Synology",
+    "90:09:d0": "Synology",
+    "bc:24:11": "Proxmox VM",
+    "52:54:00": "QEMU/KVM VM",
+    "9c:c7:a6": "AVM",
+    "34:31:c4": "AVM",
+    "c0:25:06": "AVM",
+    "00:c0:b7": "APC",
+    "00:03:c5": "Mobotix",
+    "68:54:fd": "Amazon",
+    "b8:27:eb": "Raspberry Pi",
+    "dc:a6:32": "Raspberry Pi",
+    "e4:5f:01": "Raspberry Pi",
+    "d8:3a:dd": "Raspberry Pi",
+    "00:0c:29": "VMware VM",
+    "00:50:56": "VMware VM",
+}
+
+
+def _vendor(mac: str) -> str | None:
+    vendor = _OUI.get(mac[:8])
+    if vendor:
+        return vendor
+    if int(mac[:2], 16) & 0x02:
+        return "random / virtual"
+    return None
+
+
 _LAG_NAME = re.compile(r"^(trk|dyn|po|port-channel|lag|bond|ae)\d+", re.IGNORECASE)
 
 
@@ -364,6 +396,9 @@ class BackplaneCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 item["n"] = device.name_by_user or device.name
             if mac in arp_all:
                 item["ip"] = arp_all[mac]
+            vendor = _vendor(mac)
+            if vendor:
+                item["v"] = vendor
             result.append(item)
         return result
 
