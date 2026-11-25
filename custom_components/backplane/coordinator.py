@@ -6,6 +6,7 @@ import asyncio
 import logging
 import re
 import time
+from collections import deque
 from dataclasses import dataclass, field
 from datetime import timedelta
 from typing import Any
@@ -23,6 +24,8 @@ from .const import (
     DEFAULT_PORT,
     DEFAULT_SCAN_INTERVAL,
     DISCOVERY_INTERVAL,
+    DOT3_DUPLEX,
+    DOT3_FCS_ERRORS,
     DOMAIN,
     DOT1Q_PVID,
     DOT1Q_VLAN_NAME,
@@ -39,6 +42,7 @@ from .const import (
     IF_HC_OUT_OCTETS,
     IF_HIGH_SPEED,
     IF_IN_ERRORS,
+    IF_LAST_CHANGE,
     IF_NAME,
     IF_OPER_STATUS,
     IF_OUT_ERRORS,
@@ -62,6 +66,7 @@ from .const import (
     SYS_OBJECT_ID,
     SYS_UPTIME,
 )
+from .health import evaluate
 from .snmp import Oid, SnmpClient, SnmpError, SnmpTimeout
 
 _LOGGER = logging.getLogger(__name__)
@@ -106,6 +111,7 @@ class StaticInfo:
     has_poe: bool = False
     has_hp_poe_power: bool = False
     has_cpu: bool = False
+    has_dot3: bool = False
     hr_cpus: list[int] = field(default_factory=list)
 
 
@@ -156,6 +162,10 @@ class BackplaneCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._static_ts = 0.0
         self._counters: dict[int, tuple[float, int, int]] = {}
         self._boot_ts: float | None = None
+        # health history (1 h window)
+        self._err_hist: dict[int, deque[tuple[float, int]]] = {}
+        self._flap_hist: dict[int, deque[float]] = {}
+        self._prev_oper: dict[int, int] = {}
         custom = (entry.options.get(CONF_PORT_FILTER) or "").strip()
         try:
             self._port_filter = re.compile(custom) if custom else None
@@ -263,6 +273,12 @@ class BackplaneCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "descr": _text(rem_desc.get(suffix))[:120],
             }
 
+        # EtherLike-MIB (duplex, FCS) - probe on the first ethernet port
+        first_eth = next((i for i, p in info.ports.items() if p["kind"] == "eth"), None)
+        if first_eth is not None:
+            dot3 = await client.get([DOT3_DUPLEX + (first_eth,)])
+            info.has_dot3 = bool(dot3)
+
         # PoE capability
         poe = await client.get([PETH_MAIN_POWER])
         info.has_poe = PETH_MAIN_POWER in poe
@@ -319,8 +335,12 @@ class BackplaneCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 IF_HC_OUT_OCTETS + (index,),
                 IF_IN_ERRORS + (index,),
                 IF_OUT_ERRORS + (index,),
+                IF_LAST_CHANGE + (index,),
             ]
         eth = [i for i in indexes if info.ports[i]["kind"] == "eth"]
+        if info.has_dot3:
+            for i in eth:
+                oids += [DOT3_DUPLEX + (i,), DOT3_FCS_ERRORS + (i,)]
         if info.has_poe:
             oids += [PETH_MAIN_POWER, PETH_MAIN_STATUS, PETH_MAIN_CONSUMPTION]
             oids += [PETH_PORT_DETECTION + (i,) for i in eth]
@@ -394,6 +414,34 @@ class BackplaneCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "ie": int(values.get(IF_IN_ERRORS + (index,), 0) or 0),
                 "oe": int(values.get(IF_OUT_ERRORS + (index,), 0) or 0),
             }
+            # link since / flapping / error rate (health)
+            last_change = values.get(IF_LAST_CHANGE + (index,))
+            if isinstance(last_change, int) and last_change <= int(values[SYS_UPTIME]):
+                port["ls"] = int(now - (int(values[SYS_UPTIME]) - last_change) / 100)
+            if isinstance(oper, int):
+                previous = self._prev_oper.get(index)
+                flaps = self._flap_hist.setdefault(index, deque())
+                if previous is not None and previous != oper:
+                    flaps.append(now)
+                self._prev_oper[index] = oper
+                while flaps and now - flaps[0] > 3600:
+                    flaps.popleft()
+                port["flaps_h"] = len(flaps)
+            duplex = values.get(DOT3_DUPLEX + (index,))
+            if duplex in (2, 3):
+                port["dup"] = "half" if duplex == 2 else "full"
+            fcs = values.get(DOT3_FCS_ERRORS + (index,))
+            if isinstance(fcs, int):
+                port["fcs"] = fcs
+            err_total = port["ie"] + port["oe"] + (fcs if isinstance(fcs, int) else 0)
+            hist = self._err_hist.setdefault(index, deque())
+            if hist and err_total < hist[-1][1]:
+                hist.clear()  # counter reset (reboot)
+            hist.append((now, err_total))
+            while len(hist) > 1 and now - hist[1][0] >= 3600:
+                hist.popleft()
+            if len(hist) > 1:
+                port["err_h"] = err_total - hist[0][1]
             if index in info.pvid:
                 port["vlan"] = info.pvid[index]
             if index in lag_of:
@@ -451,7 +499,7 @@ class BackplaneCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 if isinstance(values.get(HR_PROCESSOR_LOAD + (i,)), int)
             ]
             cpu = round(sum(loads) / len(loads)) if loads else None
-        return {
+        data: dict[str, Any] = {
             "system": {
                 "name": info.name,
                 "host": self.host,
@@ -476,3 +524,5 @@ class BackplaneCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             },
             "ts": int(now),
         }
+        data["health"] = evaluate(data)
+        return data

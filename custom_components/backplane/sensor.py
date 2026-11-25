@@ -106,7 +106,10 @@ async def async_setup_entry(
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     coordinator = entry.runtime_data
-    entities: list[SensorEntity] = [BackplaneMapSensor(coordinator)]
+    entities: list[SensorEntity] = [
+        BackplaneMapSensor(coordinator),
+        BackplaneHealthSensor(coordinator),
+    ]
     data = coordinator.data or {}
     for description in SENSORS:
         if description.key == "cpu" and data.get("system", {}).get("cpu") is None:
@@ -147,7 +150,7 @@ class BackplaneMapSensor(BackplaneEntity, SensorEntity):
     _attr_translation_key = "port_map"
     _attr_icon = "mdi:switch"
     _unrecorded_attributes = frozenset(
-        {"backplane", "system", "ports", "poe", "sensors", "totals", "ts"}
+        {"backplane", "system", "ports", "poe", "sensors", "totals", "ts", "health"}
     )
 
     def __init__(self, coordinator: BackplaneCoordinator) -> None:
@@ -170,5 +173,37 @@ class BackplaneMapSensor(BackplaneEntity, SensorEntity):
             "poe": data["poe"],
             "sensors": data["sensors"],
             "totals": data["totals"],
+            "health": data.get("health"),
             "ts": data["ts"],
+        }
+
+
+class BackplaneHealthSensor(BackplaneEntity, SensorEntity):
+    """Health score 0-100 with findings."""
+
+    _attr_translation_key = "health"
+    _attr_icon = "mdi:heart-pulse"
+    _attr_native_unit_of_measurement = "%"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _unrecorded_attributes = frozenset({"findings"})
+
+    def __init__(self, coordinator: BackplaneCoordinator) -> None:
+        super().__init__(coordinator, "health")
+
+    @property
+    def native_value(self) -> int | None:
+        data = self.coordinator.data
+        return data["health"]["score"] if data else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        data = self.coordinator.data
+        if not data:
+            return {}
+        health = data["health"]
+        return {
+            "grade": health["grade"],
+            "critical": sum(1 for f in health["findings"] if f["level"] == "critical"),
+            "warnings": sum(1 for f in health["findings"] if f["level"] == "warning"),
+            "findings": health["findings"],
         }

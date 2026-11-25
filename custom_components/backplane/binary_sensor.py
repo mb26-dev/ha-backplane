@@ -22,9 +22,28 @@ async def async_setup_entry(
 ) -> None:
     coordinator = entry.runtime_data
     sensors = (coordinator.data or {}).get("sensors", [])
-    async_add_entities(
+    entities: list[BinarySensorEntity] = [BackplaneProblemSensor(coordinator)]
+    entities += [
         BackplaneHealthSensor(coordinator, item["id"], item["name"]) for item in sensors
-    )
+    ]
+    async_add_entities(entities)
+
+
+class BackplaneProblemSensor(BackplaneEntity, BinarySensorEntity):
+    """On when the health evaluation has a warning or critical finding."""
+
+    _attr_device_class = BinarySensorDeviceClass.PROBLEM
+    _attr_translation_key = "health_problem"
+
+    def __init__(self, coordinator: BackplaneCoordinator) -> None:
+        super().__init__(coordinator, "health_problem")
+
+    @property
+    def is_on(self) -> bool | None:
+        data = self.coordinator.data
+        if not data:
+            return None
+        return data["health"]["grade"] != "healthy"
 
 
 class BackplaneHealthSensor(BackplaneEntity, BinarySensorEntity):

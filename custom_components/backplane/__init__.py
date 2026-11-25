@@ -8,12 +8,14 @@ from homeassistant.components.frontend import add_extra_js_url
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant
+from homeassistant.config_entries import ConfigEntryState
+from homeassistant.core import HomeAssistant, ServiceCall, ServiceResponse, SupportsResponse
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.typing import ConfigType
 
 from .const import CARD_FILENAME, DOMAIN, URL_BASE, VERSION
 from .coordinator import BackplaneCoordinator
+from .health import render_report
 
 PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.BINARY_SENSOR]
 
@@ -29,6 +31,36 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         [StaticPathConfig(URL_BASE, str(www), cache_headers=False)]
     )
     add_extra_js_url(hass, f"{URL_BASE}/{CARD_FILENAME}?v={VERSION}")
+
+    async def _health_report(call: ServiceCall) -> ServiceResponse:
+        devices = []
+        for entry in hass.config_entries.async_entries(DOMAIN):
+            if entry.state is not ConfigEntryState.LOADED:
+                continue
+            data = entry.runtime_data.data
+            if not data:
+                continue
+            devices.append({"title": entry.title, **data})
+        devices.sort(key=lambda d: d["health"]["score"])
+        report_html, report_text = render_report(devices)
+        return {
+            "html": report_html,
+            "text": report_text,
+            "devices": [
+                {
+                    "title": d["title"],
+                    "host": d["system"]["host"],
+                    "score": d["health"]["score"],
+                    "grade": d["health"]["grade"],
+                    "findings": d["health"]["findings"],
+                }
+                for d in devices
+            ],
+        }
+
+    hass.services.async_register(
+        DOMAIN, "health_report", _health_report, supports_response=SupportsResponse.ONLY
+    )
     return True
 
 

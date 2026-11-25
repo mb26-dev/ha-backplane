@@ -59,7 +59,21 @@
       },
       "boot_time": {
         "name": "Last boot"
+      },
+      "health": {
+        "name": "Health"
       }
+    },
+    "binary_sensor": {
+      "health_problem": {
+        "name": "Health problem"
+      }
+    }
+  },
+  "services": {
+    "health_report": {
+      "name": "Health report",
+      "description": "Evaluates all Backplane devices and returns a health report (HTML for e-mail, plain text and structured findings)."
     }
   }
 }

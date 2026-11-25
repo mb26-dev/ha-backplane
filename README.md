@@ -25,6 +25,8 @@
 - **PoE** - budget bar, powered ports with a bolt icon and per-port watts (HP/Aruba ProCurve)
 - **Trunks** - static and LACP trunks (ifStackTable) highlighted around their member ports
 - **LLDP** - neighbours per port (name and remote port), shown on the panel and in a list
+- **Health score** - 0-100 per device with findings: hardware failures, PoE budget, rising error/CRC counters, flapping ports, half duplex, degraded trunks, high CPU, recent reboots
+- **Health report** - `backplane.health_report` returns an e-mail ready HTML report (plus plain text and structured findings)
 - **Hardware health** - power supply / fan status (HP/Aruba ProCurve)
 - **Traffic chart** - last 60 minutes of switched traffic, seeded from the recorder
 - **Port details** - tap a port: speed, in/out, utilisation, errors, VLAN, PoE, trunk, neighbour
@@ -40,13 +42,21 @@ Tested with HP J9773A 2530-24G-PoEP (YA.16.11) and an OpenWrt router (Xiaomi AX3
 
 ## Installation
 
-### HACS (custom repository)
+### HACS (recommended)
 
 [![Open your Home Assistant instance and open this repository in HACS.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=mb26-dev&repository=ha-backplane&category=integration)
 
+1. Open **HACS** in Home Assistant, search for **Backplane** and install it.
+2. Restart Home Assistant.
+3. **Settings → Devices & services → Add integration → Backplane**.
+
+<details>
+<summary>Not showing up in HACS yet? Add it as a custom repository</summary>
+
 1. HACS → ⋮ → **Custom repositories** → add `https://github.com/mb26-dev/ha-backplane`, type **Integration**.
 2. Install **Backplane** and restart Home Assistant.
-3. **Settings → Devices & services → Add integration → Backplane**.
+
+</details>
 
 ### Manual
 
@@ -87,7 +97,42 @@ Options: polling interval (default 30 s, 10-600 s) and an optional port filter (
 | `sensor.<switch>_cpu` | CPU load (HP/Aruba) |
 | `sensor.<switch>_poe_power` / `_poe_budget` | PoE consumption and budget |
 | `sensor.<switch>_last_boot` | Boot time |
+| `sensor.<switch>_health` | Health score 0-100, attributes `grade`, `findings` |
+| `binary_sensor.<switch>_health_problem` | On when there is a warning or critical finding |
 | `binary_sensor.<switch>_power_supply` / `_fan` | Hardware problem (HP/Aruba) |
+
+## Health report
+
+`backplane.health_report` evaluates all Backplane devices and returns `html`, `text` and `devices` (score, grade, findings). Example - weekly report by e-mail:
+
+```yaml
+alias: Backplane weekly health report
+triggers:
+  - trigger: time
+    at: "08:00:00"
+conditions:
+  - condition: time
+    weekday: mon
+actions:
+  - action: backplane.health_report
+    response_variable: report
+  - action: notify.send_message
+    target:
+      entity_id: notify.my_mail
+    data:
+      title: Switch Health Report
+      message: "{{ report.text }}"
+```
+
+For an HTML mail use the SMTP integration's legacy notify action (`notify.<smtp_name>`) with `data: {html: "{{ report.html }}"}`.
+
+Findings and thresholds:
+
+| Level | Finding |
+|---|---|
+| critical | power supply / fan failure, PoE budget > 95 %, > 500 errors per hour on a port, trunk down |
+| warning | PoE budget > 80 %, ≥ 10 errors per hour (incl. CRC), ≥ 3 link changes per hour, half duplex, trunk member down, CPU ≥ 80 % |
+| info | reboot within 24 h, 10 Mbit link |
 
 ## Card
 

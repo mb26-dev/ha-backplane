@@ -2,7 +2,7 @@
  * Backplane card - live switch front panel for Home Assistant.
  * Served by the Backplane integration (custom_components/backplane).
  */
-const BP_VERSION = "0.2.2";
+const BP_VERSION = "0.3.0";
 
 const SPEED_COLORS = [
   [10000, "#00e5ff"],
@@ -12,6 +12,13 @@ const SPEED_COLORS = [
 ];
 const LAG_COLORS = ["#b388ff", "#69f0ae", "#ff80ab", "#40c4ff"];
 const IN_COLOR = "#ffd700";
+const GRADE_COLORS = { healthy: "#69f0ae", warning: "#ffb300", critical: "#ff5252" };
+const LEVEL_COLORS = { critical: "#ff5252", warning: "#ffb300", info: "#40c4ff" };
+
+const fmtSince = (ts) => {
+  if (!ts) return "-";
+  return fmtUptime(Math.max(0, Date.now() / 1000 - ts));
+};
 const OUT_COLOR = "#00e5ff";
 
 const esc = (value) =>
@@ -117,6 +124,10 @@ const STYLE = `
   .kv .v { font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .close { cursor: pointer; opacity: .7; font-size: 11px; }
   .warn { margin-top: 8px; font-size: 12px; color: #ff8a80; }
+  .hb { display: grid; grid-template-columns: 64px minmax(0,1fr); gap: 10px; align-items: start; }
+  .fd { display: grid; grid-template-columns: auto minmax(0,1fr); gap: 6px; font-size: 12px; padding: 2px 0; align-items: baseline; }
+  .fd i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: 0 0 8px; }
+  .fd span { overflow: hidden; text-overflow: ellipsis; }
   .unavail { padding: 16px; text-align: center; opacity: .7; }
 `;
 
@@ -303,6 +314,7 @@ class BackplaneCard extends HTMLElement {
       `<span class="chip">Ports <b>${esc(totals.up)}/${esc(totals.total)}</b></span>`,
       `<span class="chip">&darr; <b>${esc(fmtRate(totals.in))}</b> &uarr; <b>${esc(fmtRate(totals.out))}</b></span>`,
       poe ? `<span class="chip">PoE <b>${esc(poe.used)}/${esc(poe.budget)} W</b></span>` : "",
+      a.health ? `<span class="chip ${a.health.grade === "critical" ? "bad" : ""}">Health <b style="color:${GRADE_COLORS[a.health.grade]}">${esc(a.health.score)}</b></span>` : "",
       ...badSensors.map((s) => `<span class="chip bad">${esc(s.name)}: ${esc(s.status)}</span>`),
     ].join("");
 
@@ -361,7 +373,7 @@ class BackplaneCard extends HTMLElement {
         </div>
         <div class="panel">${svg}</div>
         <div class="legend">${legend}</div>
-        <div class="row">${traffic}${poeBox}</div>
+        <div class="row">${this._renderHealth(a.health)}${traffic}${poeBox}</div>
         <div class="row">${detail}</div>
         ${offline ? `<div class="warn">Switch not reachable - showing last known state.</div>` : ""}
       </div>`;
@@ -621,6 +633,28 @@ class BackplaneCard extends HTMLElement {
       </svg></div>`;
   }
 
+  _renderHealth(health) {
+    if (!health) return "";
+    const color = GRADE_COLORS[health.grade] || "#888";
+    const r = 26;
+    const circ = 2 * Math.PI * r;
+    const dash = ((health.score / 100) * circ).toFixed(1);
+    const ring = `<svg viewBox="0 0 64 64" width="64" height="64">
+      <circle cx="32" cy="32" r="${r}" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="6"/>
+      <circle cx="32" cy="32" r="${r}" fill="none" stroke="${color}" stroke-width="6" stroke-linecap="round"
+        stroke-dasharray="${dash} ${circ.toFixed(1)}" transform="rotate(-90 32 32)" style="filter:drop-shadow(0 0 4px ${color})"/>
+      <text x="32" y="37" text-anchor="middle" fill="${color}" font-size="16" font-weight="700">${esc(health.score)}</text>
+    </svg>`;
+    const shown = health.findings.slice(0, 5);
+    const more = health.findings.length - shown.length;
+    const list = shown.length
+      ? shown
+          .map((f) => `<div class="fd"><i style="background:${LEVEL_COLORS[f.level]};box-shadow:0 0 5px ${LEVEL_COLORS[f.level]}"></i><span>${esc(f.msg)}</span></div>`)
+          .join("") + (more > 0 ? `<div class="muted">+${more} more</div>` : "")
+      : `<div class="fd"><i style="background:#69f0ae;box-shadow:0 0 5px #69f0ae"></i><span>All ports and hardware healthy</span></div>`;
+    return `<div class="box"><h4>Health <span style="color:${color}">${esc(health.grade)}</span></h4><div class="hb">${ring}<div>${list}</div></div></div>`;
+  }
+
   _renderPoeList(item, eth) {
     const powered = eth.filter((p) => p.poe === "delivering");
     if (!powered.length) return "";
@@ -678,6 +712,11 @@ class BackplaneCard extends HTMLElement {
       kv("Out", fmtRate(port.out), OUT_COLOR),
       kv("Utilization", util),
       kv("Errors in/out", `${port.ie} / ${port.oe}`, port.ie || port.oe ? "#ffb300" : null),
+      port.err_h != null ? kv("Errors last hour", port.err_h, port.err_h ? "#ffb300" : null) : "",
+      port.fcs != null ? kv("CRC errors", port.fcs, port.fcs ? "#ffb300" : null) : "",
+      port.dup ? kv("Duplex", port.dup, port.dup === "half" ? "#ffb300" : null) : "",
+      port.ls ? kv(port.up ? "Link up since" : "Down since", fmtSince(port.ls)) : "",
+      port.flaps_h ? kv("Link changes (1 h)", port.flaps_h, "#ffb300") : "",
       port.vlan != null ? kv("VLAN (PVID)", port.vlan) : "",
       port.poe ? kv("PoE", port.pw != null ? `${port.pw} W` : port.poe, port.poe === "delivering" ? "#ffb300" : null) : "",
       port.lag ? kv("Trunk", port.lag, lagColor[port.lag]) : "",

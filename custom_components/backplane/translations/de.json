@@ -1,0 +1,79 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Switch hinzufügen",
+        "description": "Backplane liest den Switch per SNMP v2c (Read-only-Community genügt).",
+        "data": {
+          "host": "Host / IP-Adresse",
+          "community": "SNMP-Community",
+          "port": "SNMP-Port",
+          "name": "Anzeigename (optional)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Keine SNMP-Antwort. IP, Community, ACLs und SNMP auf dem Switch prüfen."
+    },
+    "abort": {
+      "already_configured": "Dieser Switch ist bereits eingerichtet."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Backplane-Optionen",
+        "description": "Automatik blendet Bridges, WLAN, VPN und VLAN-Subinterfaces aus. Beispiel-Filter für OpenWrt: ^(wan|lan\\d+)$",
+        "data": {
+          "scan_interval": "Abfrageintervall (Sekunden)",
+          "port_filter": "Port-Filter (Regex auf den Interface-Namen, leer = automatisch)"
+        }
+      }
+    },
+    "error": {
+      "invalid_regex": "Ungültiger regulärer Ausdruck"
+    }
+  },
+  "entity": {
+    "sensor": {
+      "port_map": {
+        "name": "Backplane"
+      },
+      "traffic_in": {
+        "name": "Traffic eingehend"
+      },
+      "traffic_out": {
+        "name": "Traffic ausgehend"
+      },
+      "ports_up": {
+        "name": "Aktive Ports"
+      },
+      "cpu": {
+        "name": "CPU"
+      },
+      "poe_power": {
+        "name": "PoE-Leistung"
+      },
+      "poe_budget": {
+        "name": "PoE-Budget"
+      },
+      "boot_time": {
+        "name": "Letzter Start"
+      },
+      "health": {
+        "name": "Health"
+      }
+    },
+    "binary_sensor": {
+      "health_problem": {
+        "name": "Health-Problem"
+      }
+    }
+  },
+  "services": {
+    "health_report": {
+      "name": "Health-Report",
+      "description": "Bewertet alle Backplane-Geräte und liefert einen Health-Report (HTML für E-Mail, Text und strukturierte Befunde)."
+    }
+  }
+}

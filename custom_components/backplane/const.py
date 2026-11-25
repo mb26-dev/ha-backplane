@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 DOMAIN = "backplane"
-VERSION = "0.2.2"
+VERSION = "0.3.0"
 
 CONF_COMMUNITY = "community"
 CONF_SCAN_INTERVAL = "scan_interval"
@@ -34,6 +34,10 @@ IF_ADMIN_STATUS = (1, 3, 6, 1, 2, 1, 2, 2, 1, 7)
 IF_OPER_STATUS = (1, 3, 6, 1, 2, 1, 2, 2, 1, 8)
 IF_IN_ERRORS = (1, 3, 6, 1, 2, 1, 2, 2, 1, 14)
 IF_OUT_ERRORS = (1, 3, 6, 1, 2, 1, 2, 2, 1, 20)
+IF_LAST_CHANGE = (1, 3, 6, 1, 2, 1, 2, 2, 1, 9)
+# EtherLike-MIB
+DOT3_FCS_ERRORS = (1, 3, 6, 1, 2, 1, 10, 7, 2, 1, 3)
+DOT3_DUPLEX = (1, 3, 6, 1, 2, 1, 10, 7, 2, 1, 19)
 IF_NAME = (1, 3, 6, 1, 2, 1, 31, 1, 1, 1, 1)
 IF_HC_IN_OCTETS = (1, 3, 6, 1, 2, 1, 31, 1, 1, 1, 6)
 IF_HC_OUT_OCTETS = (1, 3, 6, 1, 2, 1, 31, 1, 1, 1, 10)
