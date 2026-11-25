@@ -146,6 +146,8 @@ def _device_for_mac(registry: dr.DeviceRegistry, mac: str) -> dr.DeviceEntry | N
         return next(iter(devices), None) if devices else None
     return registry.async_get_device(connections={conn})
 
+
+@dataclass
 class StaticInfo:
     """Slow-changing switch facts, re-read every DISCOVERY_INTERVAL."""
 
