@@ -77,6 +77,7 @@ from .const import (
 from .config_flow import build_client
 from .health import evaluate
 from .snmp import Oid, SnmpClient, SnmpError, SnmpTimeout
+from .vendors import detect_vendor
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -254,6 +255,9 @@ class BackplaneCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         object_id = system.get(SYS_OBJECT_ID)
         info.is_hp = isinstance(object_id, tuple) and object_id[:7] == HP_ENTERPRISE
         info.manufacturer, info.model, info.firmware = _parse_descr(info.descr)
+        vendor = detect_vendor(object_id, info.descr)
+        if vendor:
+            info.manufacturer = vendor
 
         types = await client.walk(IF_TYPE)
         names = await client.walk(IF_NAME)

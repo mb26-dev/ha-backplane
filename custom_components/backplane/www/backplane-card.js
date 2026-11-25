@@ -2,7 +2,7 @@
  * Backplane card - live switch front panel for Home Assistant.
  * Served by the Backplane integration (custom_components/backplane).
  */
-const BP_VERSION = "0.4.2";
+const BP_VERSION = "0.5.0";
 
 const SPEED_COLORS = [
   [10000, "#00e5ff"],
@@ -142,6 +142,18 @@ const STYLE = `
   .fd span { overflow: hidden; text-overflow: ellipsis; }
   .unavail { padding: 16px; text-align: center; opacity: .7; }
 `;
+
+function wordmark(name, x, y, maxW) {
+  const label = String(name || "").toUpperCase();
+  if (!label) return "";
+  const size = Math.max(9, Math.min(15, (maxW - 14) / (label.length * 0.68)));
+  const w = Math.min(maxW, Math.round(label.length * size * 0.68 + 16));
+  const h = Math.round(size + 12);
+  return `<g class="wordmark">
+    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${h / 2}" fill="rgba(255,215,0,0.07)" stroke="rgba(255,215,0,0.55)" stroke-width="1"/>
+    <text x="${x + w / 2}" y="${y + h / 2 + size * 0.36}" text-anchor="middle" fill="#ffd700" font-size="${size.toFixed(1)}" font-weight="800" letter-spacing="1.2">${esc(label)}</text>
+  </g>`;
+}
 
 class BackplaneCard extends HTMLElement {
   constructor() {
@@ -504,8 +516,8 @@ class BackplaneCard extends HTMLElement {
       ["PoE", poe ? (poe.on ? "#ffb300" : "#555") : null],
     ].filter((led) => led[1]);
     const brandBlock = width - x0 > 80
-      ? `${item.logo ? `<image href="${esc(item.logo)}" x="${x0}" y="18" width="100" height="38" preserveAspectRatio="xMinYMid meet"/>` : `<text x="${x0}" y="40" fill="#ffd700" font-size="15" font-weight="700">${esc((sys.manufacturer || "").toUpperCase())}</text>`}
-        <text x="${x0}" y="${item.logo ? 70 : 58}" fill="#e0e0e0" font-size="11">${esc(sys.model || "")}</text>
+      ? `${item.logo ? `<image href="${esc(item.logo)}" x="${x0}" y="18" width="100" height="38" preserveAspectRatio="xMinYMid meet"/>` : wordmark(sys.manufacturer, x0, 22, width - x0 - 22)}
+        <text x="${x0}" y="${item.logo ? 70 : 62}" fill="#e0e0e0" font-size="11">${esc(sys.model || "")}</text>
         ${leds
           .map(
             ([label, color], i) =>
@@ -569,8 +581,8 @@ class BackplaneCard extends HTMLElement {
       : logo
       ? `<image href="${esc(logo)}" x="26" y="12" width="112" height="44" preserveAspectRatio="xMinYMid meet"/>
       <text x="26" y="72" fill="#e0e0e0" font-size="12">${esc(sys.model || "")}</text>`
-      : `<text x="26" y="34" fill="#ffd700" font-size="15" font-weight="700" letter-spacing=".5">${esc((sys.manufacturer || "").toUpperCase())}</text>
-      <text x="26" y="52" fill="#e0e0e0" font-size="12">${esc(sys.model || "")}</text>
+      : `${wordmark(sys.manufacturer, 26, 14, 130)}
+      <text x="26" y="57" fill="#e0e0e0" font-size="12">${esc(sys.model || "")}</text>
       <text x="26" y="${height - 16}" fill="rgba(255,215,0,0.45)" font-size="9" letter-spacing="2">BACKPLANE</text>`;
     const defs = `
       <defs>

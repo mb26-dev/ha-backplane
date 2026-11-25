@@ -186,6 +186,14 @@ entities:
 
 The card has a visual editor (device picker).
 
+### Vendor badges
+
+Backplane recognises the vendor from `sysObjectID` and `sysDescr` and shows it as a gold badge on the panel. Detected out of the box:
+
+Cisco · Cisco Meraki · HPE Aruba · HPE Comware · Juniper · Arista · Netgear · TP-Link (JetStream / Omada) · D-Link · Zyxel · Ubiquiti (UniFi / EdgeSwitch) · MikroTik · Huawei · Dell · Fortinet · Ruckus · Brocade · Extreme Networks · Alcatel-Lucent · Allied Telesis · Linksys · QNAP · Synology · Moxa · Hirschmann · Siemens · ZTE · 3Com · OpenWrt · pfSense · OPNsense · GL.iNet · Cudy
+
+Backplane does not ship vendor logos. To show one, put your own image under `/config/www/` and set `logo:` for that entry (see below). `brand:` overrides the detected name.
+
 Per entry in `entities` you can also set `name`, `sfp_ports`, `port_names` (e.g. `{"14": "NAS"}`), `brand`, `model` (panel labels) and `logo` (image URL, e.g. `/local/logos/vendor.png`, shown on the panel instead of the brand text):
 
 ```yaml
