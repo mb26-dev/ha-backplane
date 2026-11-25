@@ -132,8 +132,6 @@ def _printable(value: Any) -> str:
     return _text(value)
 
 
-@dataclass
-
 def _device_for_mac(registry: dr.DeviceRegistry, mac: str) -> dr.DeviceEntry | None:
     """Look up a device by MAC across HA versions."""
     conn = (dr.CONNECTION_NETWORK_MAC, mac)
