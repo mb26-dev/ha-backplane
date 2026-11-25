@@ -135,13 +135,18 @@ def _printable(value: Any) -> str:
 def _device_for_mac(registry: dr.DeviceRegistry, mac: str) -> dr.DeviceEntry | None:
     """Look up a device by MAC across HA versions."""
     conn = (dr.CONNECTION_NETWORK_MAC, mac)
-    by_conn = getattr(registry, "async_get_device_by_connection", None)
-    if by_conn is not None:
-        return by_conn(conn)
-    by_many = getattr(registry, "async_get_devices", None)
-    if by_many is not None:
-        devices = by_many(connections={conn})
-        return next(iter(devices), None) if devices else None
+    for name in ("async_get_device_by_connection", "async_get_devices"):
+        func = getattr(registry, name, None)
+        if func is None:
+            continue
+        for call in (lambda f=func: f(conn), lambda f=func: f(connections={conn})):
+            try:
+                found = call()
+            except TypeError:
+                continue
+            if found is None or isinstance(found, dr.DeviceEntry):
+                return found
+            return next(iter(found), None)
     return registry.async_get_device(connections={conn})
 
 
