@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="images/card-desktop.jpg" alt="Backplane card" width="900">
+  <img src="images/logo.jpg" alt="Backplane logo" width="260">
 </p>
 
 <h1 align="center">Backplane</h1>
@@ -13,6 +13,10 @@
   <a href="https://github.com/hacs/integration"><img src="https://img.shields.io/badge/HACS-Custom-41BDF5.svg" alt="HACS Custom"></a>
   <img src="https://img.shields.io/github/v/release/mb26-dev/ha-backplane" alt="Release">
   <img src="https://img.shields.io/badge/SNMP-v2c-ffd700" alt="SNMP v2c">
+</p>
+
+<p align="center">
+  <img src="images/card-desktop.jpg" alt="Backplane card" width="900">
 </p>
 
 ## Features
