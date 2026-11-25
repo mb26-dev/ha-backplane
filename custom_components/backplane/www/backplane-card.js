@@ -2,7 +2,7 @@
  * Backplane card - live switch front panel for Home Assistant.
  * Served by the Backplane integration (custom_components/backplane).
  */
-const BP_VERSION = "0.2.1";
+const BP_VERSION = "0.2.2";
 
 const SPEED_COLORS = [
   [10000, "#00e5ff"],
@@ -309,7 +309,7 @@ class BackplaneCard extends HTMLElement {
     const selected = this._selected[item.entity];
     const smallDevice = this._layout(item, eth).copper.length <= 8;
     const svg = this._narrow && !smallDevice
-      ? [1, 2].map((part) => this._renderPanel(item, sys, eth, lagColor, selected, a.sensors || [], poe, part)).join("")
+      ? this._renderStacked(item, sys, eth, lagColor, selected, a.sensors || [], poe)
       : this._renderPanel(item, sys, eth, lagColor, selected, a.sensors || [], poe, this._narrow ? 3 : 0);
 
     const legend = [
@@ -351,7 +351,7 @@ class BackplaneCard extends HTMLElement {
         <div class="hdr">
           <div class="ttl">
             <span class="state ${offline ? "off" : ""}"></span>
-            ${this._narrow && item.logo ? `<img class="hlogo" src="${esc(item.logo)}" alt="">` : ""}
+            ${this._narrow && smallDevice && item.logo ? `<img class="hlogo" src="${esc(item.logo)}" alt="">` : ""}
             <div style="min-width:0">
               <div class="name">${esc(title)}</div>
               <div class="sub">${esc(subParts.join(" · "))}</div>
@@ -376,7 +376,53 @@ class BackplaneCard extends HTMLElement {
     return { copper, fiber };
   }
 
-  _renderPanel(item, sys, eth, lagColor, selected, sensors, poe, part) {
+  _renderStacked(item, sys, eth, lagColor, selected, sensors, poe) {
+    // phone: one chassis, two port banks stacked (1-12 above 13-24 + SFP)
+    const top = this._renderPanel(item, sys, eth, lagColor, selected, sensors, poe, 1, true);
+    const bottom = this._renderPanel(item, sys, eth, lagColor, selected, sensors, poe, 2, true);
+    const width = Math.max(top.width, bottom.width);
+    const overlap = 14;
+    const height = top.height + bottom.height - overlap;
+    const screws = [height * 0.25, height * 0.75]
+      .map(
+        (y) =>
+          `<circle cx="12" cy="${y}" r="3.2" fill="#000" stroke="#555"/><circle cx="${width - 12}" cy="${y}" r="3.2" fill="#000" stroke="#555"/>`,
+      )
+      .join("");
+    // brand block in the free space above the SFP cage
+    const x0 = width - 26 - 2 * 54 + 4;
+    const ledColor = (match) => {
+      const found = sensors.find((x) => x.name.toLowerCase().includes(match));
+      if (!found) return null;
+      return { good: "#69f0ae", warning: "#ffb300", bad: "#ff5252" }[found.status] || "#555";
+    };
+    const leds = [
+      ["PWR", ledColor("power") || "#69f0ae"],
+      ["FAN", ledColor("fan")],
+      ["PoE", poe ? (poe.on ? "#ffb300" : "#555") : null],
+    ].filter((led) => led[1]);
+    const brandBlock = width - x0 > 80
+      ? `${item.logo ? `<image href="${esc(item.logo)}" x="${x0}" y="18" width="100" height="38" preserveAspectRatio="xMinYMid meet"/>` : `<text x="${x0}" y="40" fill="#ffd700" font-size="15" font-weight="700">${esc((sys.manufacturer || "").toUpperCase())}</text>`}
+        <text x="${x0}" y="${item.logo ? 70 : 58}" fill="#e0e0e0" font-size="11">${esc(sys.model || "")}</text>
+        ${leds
+          .map(
+            ([label, color], i) =>
+              `<circle cx="${x0 + 5 + i * 36}" cy="94" r="4" fill="${color}" style="filter:drop-shadow(0 0 3px ${color})"/><text x="${x0 + 12 + i * 36}" y="98" fill="#bdbdbd" font-size="9">${label}</text>`,
+          )
+          .join("")}`
+      : "";
+    return `<svg style="max-width:${Math.round(width * 2.6)}px;margin-top:8px" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg" font-family="var(--primary-font-family, sans-serif)">
+      ${top.defs}
+      <rect x="1" y="1" width="${width - 2}" height="${height - 2}" rx="10" fill="url(#bp-chassis)" stroke="rgba(255,215,0,0.55)" stroke-width="1.5"/>
+      <line x1="24" y1="${top.height - overlap / 2}" x2="${width - 24}" y2="${top.height - overlap / 2}" stroke="rgba(255,215,0,0.12)" stroke-dasharray="3 4"/>
+      ${screws}
+      <g>${top.inner}</g>
+      ${brandBlock}
+      <g transform="translate(0 ${top.height - overlap})">${bottom.inner}</g>
+    </svg>`;
+  }
+
+  _renderPanel(item, sys, eth, lagColor, selected, sensors, poe, part, bare = false) {
     let { copper, fiber } = this._layout(item, eth);
     const compact = part > 0;
     const fiberAll = fiber.length;
@@ -424,7 +470,7 @@ class BackplaneCard extends HTMLElement {
       : `<text x="26" y="34" fill="#ffd700" font-size="15" font-weight="700" letter-spacing=".5">${esc((sys.manufacturer || "").toUpperCase())}</text>
       <text x="26" y="52" fill="#e0e0e0" font-size="12">${esc(sys.model || "")}</text>
       <text x="26" y="${height - 16}" fill="rgba(255,215,0,0.45)" font-size="9" letter-spacing="2">BACKPLANE</text>`;
-    parts.push(`
+    const defs = `
       <defs>
         <linearGradient id="bp-chassis" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0" stop-color="#262626"/><stop offset="1" stop-color="#0c0c0c"/>
@@ -432,7 +478,8 @@ class BackplaneCard extends HTMLElement {
         <linearGradient id="bp-jack" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0" stop-color="#050505"/><stop offset="1" stop-color="#1a1a1a"/>
         </linearGradient>
-      </defs>
+      </defs>`;
+    if (!bare) parts.push(`${defs}
       <rect x="1" y="1" width="${width - 2}" height="${height - 2}" rx="10" fill="url(#bp-chassis)" stroke="rgba(255,215,0,0.55)" stroke-width="1.5"/>
       <circle cx="12" cy="${height / 2 - 18}" r="3.2" fill="#000" stroke="#555"/>
       <circle cx="12" cy="${height / 2 + 18}" r="3.2" fill="#000" stroke="#555"/>
@@ -540,6 +587,7 @@ class BackplaneCard extends HTMLElement {
         `<text x="${fiberX + (fiberCols * PITCH - 8) / 2}" y="${height - 6}" text-anchor="middle" fill="#777" font-size="9" letter-spacing="1">SFP</text>`,
       );
     }
+    if (bare) return { defs, inner: parts.join(""), width, height };
     const maxWidth = Math.round(width * (compact ? 2.6 : 1.25));
     return `<svg style="max-width:${maxWidth}px;${compact ? "margin-top:8px" : ""}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg" font-family="var(--primary-font-family, sans-serif)">${parts.join("")}</svg>`;
   }
