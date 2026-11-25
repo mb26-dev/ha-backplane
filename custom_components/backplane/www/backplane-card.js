@@ -2,7 +2,7 @@
  * Backplane card - live switch front panel for Home Assistant.
  * Served by the Backplane integration (custom_components/backplane).
  */
-const BP_VERSION = "0.2.0";
+const BP_VERSION = "0.2.1";
 
 const SPEED_COLORS = [
   [10000, "#00e5ff"],
@@ -72,6 +72,7 @@ const STYLE = `
   .sw + .sw { margin-top: 18px; padding-top: 16px; border-top: 1px solid rgba(255,215,0,0.25); }
   .hdr { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; justify-content: space-between; }
   .ttl { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1 1 200px; }
+  .hlogo { height: 22px; width: auto; max-width: 70px; object-fit: contain; flex: 0 0 auto; }
   .ttl ha-icon { flex: 0 0 22px; --mdc-icon-size: 22px; color: #ffd700; }
   .name { font-size: 16px; font-weight: 600; color: #ffd700; letter-spacing: .3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .sub { font-size: 11px; opacity: .7; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -350,6 +351,7 @@ class BackplaneCard extends HTMLElement {
         <div class="hdr">
           <div class="ttl">
             <span class="state ${offline ? "off" : ""}"></span>
+            ${this._narrow && item.logo ? `<img class="hlogo" src="${esc(item.logo)}" alt="">` : ""}
             <div style="min-width:0">
               <div class="name">${esc(title)}</div>
               <div class="sub">${esc(subParts.join(" · "))}</div>
@@ -407,13 +409,18 @@ class BackplaneCard extends HTMLElement {
     if (part === 1 && fiberAll) width += 22 + Math.ceil(fiberAll / 2) * PITCH;
     let height = ROW2 + PH + 30;
     if (single) {
-      height = compact ? TOP + PH + 26 : 132;
+      height = compact ? TOP + PH + 26 : item.logo ? 140 : 132;
       TOP = Math.round((height - PH) / 2) + 2;
     }
 
     const parts = [];
+    const logo = item.logo;
+    const ledTop = logo ? 90 : 72;
     const brand = compact
       ? ""
+      : logo
+      ? `<image href="${esc(logo)}" x="26" y="12" width="112" height="44" preserveAspectRatio="xMinYMid meet"/>
+      <text x="26" y="72" fill="#e0e0e0" font-size="12">${esc(sys.model || "")}</text>`
       : `<text x="26" y="34" fill="#ffd700" font-size="15" font-weight="700" letter-spacing=".5">${esc((sys.manufacturer || "").toUpperCase())}</text>
       <text x="26" y="52" fill="#e0e0e0" font-size="12">${esc(sys.model || "")}</text>
       <text x="26" y="${height - 16}" fill="rgba(255,215,0,0.45)" font-size="9" letter-spacing="2">BACKPLANE</text>`;
@@ -448,7 +455,7 @@ class BackplaneCard extends HTMLElement {
       ["PoE", poe ? (poe.on ? "#ffb300" : "#555") : null],
     ].filter((led) => led[1] && !compact);
     leds.forEach(([label, color], i) => {
-      const y = 72 + i * 16;
+      const y = ledTop + i * 16;
       parts.push(
         `<circle cx="31" cy="${y}" r="4" fill="${color}" style="filter:drop-shadow(0 0 3px ${color})"/>` +
           `<text x="41" y="${y + 4}" fill="#bdbdbd" font-size="10">${label}</text>`,

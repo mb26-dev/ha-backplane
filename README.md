@@ -105,7 +105,7 @@ entities:
 | `entity` / `entities` | one or more `sensor.*_backplane` entities |
 | `sfp_ports` | number of SFP ports at the end (auto: 4 for 28/52-port switches) |
 
-Per entry in `entities` you can also set `name`, `sfp_ports`, `brand` and `model` (panel labels):
+Per entry in `entities` you can also set `name`, `sfp_ports`, `brand`, `model` (panel labels) and `logo` (image URL, e.g. `/local/logos/vendor.png`, shown on the panel instead of the brand text):
 
 ```yaml
 type: custom:backplane-card
