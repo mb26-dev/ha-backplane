@@ -153,8 +153,8 @@ const fmtAgo = (seconds) => {
 function wordmark(name, x, y, maxW) {
   const label = String(name || "").toUpperCase();
   if (!label) return "";
-  const size = Math.max(9, Math.min(15, (maxW - 14) / (label.length * 0.68)));
-  const w = Math.min(maxW, Math.round(label.length * size * 0.68 + 16));
+  const size = Math.max(9, Math.min(15, (maxW - 18) / (label.length * 0.74)));
+  const w = Math.min(maxW, Math.round(label.length * size * 0.74 + 18));
   const h = Math.round(size + 12);
   return `<g class="wordmark">
     <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${h / 2}" fill="rgba(255,215,0,0.07)" stroke="rgba(255,215,0,0.55)" stroke-width="1"/>
