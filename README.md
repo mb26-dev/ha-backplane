@@ -32,7 +32,9 @@
 - **No dependencies** - Backplane ships its own tiny async SNMP v2c client (GET/GETBULK). No pysnmp, no blocking MIB loading, small UDP packets that also work over VPN tunnels
 - **UI setup** - add a switch with IP and community, nothing in YAML
 
-Tested with HP J9773A 2530-24G-PoEP (YA.16.11). Any switch with IF-MIB works; PoE, LLDP and Q-BRIDGE data are used when the switch provides them.
+Tested with HP J9773A 2530-24G-PoEP (YA.16.11) and an OpenWrt router (Xiaomi AX3000T, net-snmp). Any device with IF-MIB works; PoE, LLDP and Q-BRIDGE data are used when the device provides them.
+
+- **Routers / OpenWrt** - bridges, Wi-Fi, VPN and VLAN sub-interfaces are hidden automatically, the WAN port is highlighted and small devices get a single-row panel. CPU comes from HOST-RESOURCES-MIB.
 
 <p align="center"><img src="images/card-phone.jpg" alt="Backplane on a phone" width="320"></p>
 
@@ -73,7 +75,7 @@ Avoid leaving the factory `public` community with manager (write) rights enabled
 | SNMP port | default 161 |
 | Display name | optional, otherwise the switch's sysName |
 
-Options: polling interval (default 30 s, 10-600 s). Interface names, trunks, LLDP neighbours and VLANs are re-read every 10 minutes.
+Options: polling interval (default 30 s, 10-600 s) and an optional port filter (regular expression on the interface name, e.g. `^(wan|lan\d+)$`; empty = auto). Interface names, trunks, LLDP neighbours and VLANs are re-read every 10 minutes.
 
 ## Entities
 
@@ -103,7 +105,7 @@ entities:
 | `entity` / `entities` | one or more `sensor.*_backplane` entities |
 | `sfp_ports` | number of SFP ports at the end (auto: 4 for 28/52-port switches) |
 
-Per entry in `entities` you can also set `name` and `sfp_ports`:
+Per entry in `entities` you can also set `name`, `sfp_ports`, `brand` and `model` (panel labels):
 
 ```yaml
 type: custom:backplane-card
@@ -111,6 +113,17 @@ entities:
   - entity: sensor.core_switch_backplane
     name: Core switch
     sfp_ports: 4
+  - entity: sensor.router_backplane
+    name: Router
+    brand: Xiaomi
+    model: AX3000T · OpenWrt
+```
+
+### OpenWrt
+
+```
+apk add snmpd        # OpenWrt 25.x (opkg install snmpd on 24.x)
+/etc/init.d/snmpd enable && /etc/init.d/snmpd start
 ```
 
 ## Support

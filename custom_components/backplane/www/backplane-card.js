@@ -2,7 +2,7 @@
  * Backplane card - live switch front panel for Home Assistant.
  * Served by the Backplane integration (custom_components/backplane).
  */
-const BP_VERSION = "0.1.1";
+const BP_VERSION = "0.2.0";
 
 const SPEED_COLORS = [
   [10000, "#00e5ff"],
@@ -279,7 +279,7 @@ class BackplaneCard extends HTMLElement {
       return `<div class="sw unavail">Entity ${esc(item.entity)} not found</div>`;
     }
     const a = state.attributes;
-    const sys = a.system;
+    let sys = a.system;
     if (!sys || !a.ports) {
       return `<div class="sw unavail">${esc(state.attributes.friendly_name || item.entity)}: waiting for data</div>`;
     }
@@ -290,6 +290,7 @@ class BackplaneCard extends HTMLElement {
     const lagColor = {};
     lags.forEach((lag, i) => (lagColor[lag.n] = LAG_COLORS[i % LAG_COLORS.length]));
     const title = item.name || sys.name || item.entity;
+    sys = { ...sys, manufacturer: item.brand || sys.manufacturer, model: item.model || sys.model };
     const subParts = [sys.model, sys.firmware, sys.location, sys.host].filter(Boolean);
     const poe = a.poe;
     const totals = a.totals || {};
@@ -305,9 +306,10 @@ class BackplaneCard extends HTMLElement {
     ].join("");
 
     const selected = this._selected[item.entity];
-    const svg = this._narrow
+    const smallDevice = this._layout(item, eth).copper.length <= 8;
+    const svg = this._narrow && !smallDevice
       ? [1, 2].map((part) => this._renderPanel(item, sys, eth, lagColor, selected, a.sensors || [], poe, part)).join("")
-      : this._renderPanel(item, sys, eth, lagColor, selected, a.sensors || [], poe, 0);
+      : this._renderPanel(item, sys, eth, lagColor, selected, a.sensors || [], poe, this._narrow ? 3 : 0);
 
     const legend = [
       ...lags.map(
@@ -376,7 +378,8 @@ class BackplaneCard extends HTMLElement {
     let { copper, fiber } = this._layout(item, eth);
     const compact = part > 0;
     const fiberAll = fiber.length;
-    if (compact) {
+    const single = copper.length <= 8;
+    if (compact && part !== 3) {
       const totalCols = Math.ceil(copper.length / 2);
       const split = Math.min(totalCols, Math.max(1, Math.ceil(totalCols / 2 / 6) * 6)) * 2;
       if (part === 1) {
@@ -392,16 +395,21 @@ class BackplaneCard extends HTMLElement {
     const GROUP = 6;
     const GROUP_GAP = 12;
     const LEFT = compact ? 24 : 156;
-    const TOP = 34;
+    let TOP = 34;
     const ROW2 = TOP + PH + 24;
-    const cols = Math.ceil(copper.length / 2);
+    const wanGap = single && copper.some((p) => /^wan/i.test(p.n)) ? 16 : 0;
+    const cols = single ? copper.length : Math.ceil(copper.length / 2);
     const groups = Math.max(1, Math.ceil(cols / GROUP));
-    const copperWidth = cols * PITCH + (groups - 1) * GROUP_GAP;
+    const copperWidth = cols * PITCH + (groups - 1) * GROUP_GAP + wanGap;
     const fiberCols = Math.ceil(fiber.length / 2);
     const fiberX = LEFT + copperWidth + (fiber.length ? 22 : 0);
     let width = fiberX + fiberCols * PITCH + 26;
     if (part === 1 && fiberAll) width += 22 + Math.ceil(fiberAll / 2) * PITCH;
-    const height = ROW2 + PH + 30;
+    let height = ROW2 + PH + 30;
+    if (single) {
+      height = compact ? TOP + PH + 26 : 132;
+      TOP = Math.round((height - PH) / 2) + 2;
+    }
 
     const parts = [];
     const brand = compact
@@ -492,6 +500,7 @@ class BackplaneCard extends HTMLElement {
       const disabledX = !port.adm
         ? `<path d="M14 10 L${PW - 14} ${PH - 10} M${PW - 14} 10 L14 ${PH - 10}" stroke="#ff5252" stroke-width="2"/>`
         : "";
+      const isWan = /^wan/i.test(port.n);
       const labelY = bottom ? PH + 13 : -6;
       return `
         <g class="port ${isSel ? "sel" : ""}" data-port="${port.i}" data-entity="${esc(item.entity)}" transform="translate(${x} ${y})">
@@ -502,15 +511,17 @@ class BackplaneCard extends HTMLElement {
           }/>
           <g ${flip}>${socket}${linkLed}${actLed}${utilBar}</g>
           ${bolt}${nbDot}${disabledX}
-          <text x="${PW / 2}" y="${labelY}" text-anchor="middle" fill="${up ? "#e0e0e0" : "#777"}" font-size="10">${esc(port.n)}</text>
+          <text x="${PW / 2}" y="${labelY}" text-anchor="middle" fill="${isWan ? "#40c4ff" : up ? "#e0e0e0" : "#777"}" font-size="10" ${isWan ? 'font-weight="700"' : ""}>${esc(isWan ? port.n.toUpperCase() : port.n)}</text>
         </g>`;
     };
 
+    let pastWan = 0;
     copper.forEach((port, k) => {
-      const col = Math.floor(k / 2);
-      const bottom = k % 2 === 1;
-      const x = LEFT + col * PITCH + Math.floor(col / GROUP) * GROUP_GAP;
+      const col = single ? k : Math.floor(k / 2);
+      const bottom = single ? false : k % 2 === 1;
+      const x = LEFT + col * PITCH + Math.floor(col / GROUP) * GROUP_GAP + pastWan;
       parts.push(place(port, x, bottom ? ROW2 : TOP, bottom, false));
+      if (single && /^wan/i.test(port.n)) pastWan = wanGap;
     });
     fiber.forEach((port, k) => {
       const col = Math.floor(k / 2);
@@ -522,7 +533,8 @@ class BackplaneCard extends HTMLElement {
         `<text x="${fiberX + (fiberCols * PITCH - 8) / 2}" y="${height - 6}" text-anchor="middle" fill="#777" font-size="9" letter-spacing="1">SFP</text>`,
       );
     }
-    return `<svg ${compact ? 'style="margin-top:8px"' : ""} viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg" font-family="var(--primary-font-family, sans-serif)">${parts.join("")}</svg>`;
+    const maxWidth = Math.round(width * (compact ? 2.6 : 1.25));
+    return `<svg style="max-width:${maxWidth}px;${compact ? "margin-top:8px" : ""}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg" font-family="var(--primary-font-family, sans-serif)">${parts.join("")}</svg>`;
   }
 
   _renderSpark(hist) {

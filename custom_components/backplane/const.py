@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 DOMAIN = "backplane"
-VERSION = "0.1.1"
+VERSION = "0.2.0"
 
 CONF_COMMUNITY = "community"
 CONF_SCAN_INTERVAL = "scan_interval"
+CONF_PORT_FILTER = "port_filter"
 
 DEFAULT_PORT = 161
 DEFAULT_COMMUNITY = "public"
@@ -41,6 +42,16 @@ IF_ALIAS = (1, 3, 6, 1, 2, 1, 31, 1, 1, 1, 18)
 IF_STACK_STATUS = (1, 3, 6, 1, 2, 1, 31, 1, 2, 1, 3)
 
 IFTYPE_ETHERNET = {6, 62, 69, 117}
+
+# Linux/OpenWrt report bridges, Wi-Fi, VPN and VLAN sub-interfaces as ethernet.
+# These are never front-panel ports (auto mode).
+AUTO_EXCLUDE = (
+    r"^(lo|br-.*|br\d+|bridge.*|phy\d+-.*|wlan.*|mon\d*|tailscale.*|wg\d*|tun\d*|tap\d*"
+    r"|veth.*|docker.*|ifb.*|sit\d*|gre.*|ip6tnl.*|pppoe-.*|dummy.*|bat\d*|.*\..*)$"
+)
+
+# ---- HOST-RESOURCES-MIB (Linux / OpenWrt CPU)
+HR_PROCESSOR_LOAD = (1, 3, 6, 1, 2, 1, 25, 3, 3, 1, 2)
 IFTYPE_LAG = 161
 
 # ---- Q-BRIDGE-MIB

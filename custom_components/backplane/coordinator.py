@@ -16,7 +16,9 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import (
+    AUTO_EXCLUDE,
     CONF_COMMUNITY,
+    CONF_PORT_FILTER,
     CONF_SCAN_INTERVAL,
     DEFAULT_PORT,
     DEFAULT_SCAN_INTERVAL,
@@ -24,6 +26,7 @@ from .const import (
     DOMAIN,
     DOT1Q_PVID,
     DOT1Q_VLAN_NAME,
+    HR_PROCESSOR_LOAD,
     HP_CPU,
     HP_ENTERPRISE,
     HP_POE_PORT_POWER_MW,
@@ -103,6 +106,7 @@ class StaticInfo:
     has_poe: bool = False
     has_hp_poe_power: bool = False
     has_cpu: bool = False
+    hr_cpus: list[int] = field(default_factory=list)
 
 
 def _parse_descr(descr: str) -> tuple[str, str, str]:
@@ -115,6 +119,9 @@ def _parse_descr(descr: str) -> tuple[str, str, str]:
         match = re.search(r"version\s+([\w.\-()]+)", descr, re.IGNORECASE)
         if match:
             firmware = match.group(1).rstrip(",")
+    linux = re.match(r"^Linux\s+(\S+)\s+(\S+)", descr)
+    if linux:
+        return "Linux", "Router", linux.group(2)
     head = descr.split(",")[0].strip()
     manufacturer = head.split(" ")[0] if head else ""
     model = head
@@ -149,6 +156,13 @@ class BackplaneCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._static_ts = 0.0
         self._counters: dict[int, tuple[float, int, int]] = {}
         self._boot_ts: float | None = None
+        custom = (entry.options.get(CONF_PORT_FILTER) or "").strip()
+        try:
+            self._port_filter = re.compile(custom) if custom else None
+        except re.error:
+            _LOGGER.warning("Invalid port filter %r ignored", custom)
+            self._port_filter = None
+        self._auto_exclude = re.compile(AUTO_EXCLUDE, re.IGNORECASE)
 
     async def async_shutdown(self) -> None:
         """Close the socket when the entry unloads."""
@@ -175,15 +189,26 @@ class BackplaneCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         names = await client.walk(IF_NAME)
         aliases = await client.walk(IF_ALIAS)
 
+        all_names = {_text(v) for v in names.values()}
+        has_switch_ports = any(re.match(r"^(lan\d+|wan\d*)$", n) for n in all_names)
         for suffix, if_type in sorted(types.items()):
             index = suffix[0]
             name = _text(names.get(suffix)) or str(index)
-            if if_type in IFTYPE_ETHERNET:
-                kind = "eth"
-            elif if_type == IFTYPE_LAG or _LAG_NAME.match(name):
+            if if_type == IFTYPE_LAG or (_LAG_NAME.match(name) and if_type != 24):
                 kind = "lag"
+            elif if_type in IFTYPE_ETHERNET:
+                kind = "eth"
             else:
                 continue
+            if self._port_filter is not None:
+                if not self._port_filter.search(name):
+                    continue
+            else:
+                if self._auto_exclude.match(name):
+                    continue
+                # DSA conduit (eth0) carries the switch ports on OpenWrt
+                if has_switch_ports and re.match(r"^eth\d+$", name):
+                    continue
             info.ports[index] = {
                 "name": name,
                 "alias": _text(aliases.get(suffix)),
@@ -242,6 +267,9 @@ class BackplaneCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         poe = await client.get([PETH_MAIN_POWER])
         info.has_poe = PETH_MAIN_POWER in poe
 
+        if not info.is_hp:
+            loads = await client.walk(HR_PROCESSOR_LOAD)
+            info.hr_cpus = sorted(suffix[0] for suffix in loads)
         if info.is_hp:
             hp = await client.get([HP_CPU])
             info.has_cpu = HP_CPU in hp
@@ -300,6 +328,7 @@ class BackplaneCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 oids += [HP_POE_PORT_POWER_MW + (i,) for i in eth]
         if info.has_cpu:
             oids.append(HP_CPU)
+        oids += [HR_PROCESSOR_LOAD + (i,) for i in info.hr_cpus]
         oids += [HP_SENSOR_STATUS + (i,) for i in info.sensors]
 
         # run batches with limited parallelism (keeps latency low over VPN)
@@ -415,6 +444,13 @@ class BackplaneCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
 
         cpu = values.get(HP_CPU)
+        if not isinstance(cpu, int) and info.hr_cpus:
+            loads = [
+                values[HR_PROCESSOR_LOAD + (i,)]
+                for i in info.hr_cpus
+                if isinstance(values.get(HR_PROCESSOR_LOAD + (i,)), int)
+            ]
+            cpu = round(sum(loads) / len(loads)) if loads else None
         return {
             "system": {
                 "name": info.name,

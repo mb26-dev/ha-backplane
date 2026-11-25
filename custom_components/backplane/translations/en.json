@@ -24,21 +24,42 @@
       "init": {
         "title": "Backplane options",
         "data": {
-          "scan_interval": "Polling interval (seconds)"
-        }
+          "scan_interval": "Polling interval (seconds)",
+          "port_filter": "Port filter (regex on interface name, empty = auto)"
+        },
+        "description": "Auto mode hides bridges, Wi-Fi, VPN and VLAN sub-interfaces. Example filter for OpenWrt: ^(wan|lan\\d+)$"
       }
+    },
+    "error": {
+      "invalid_regex": "Invalid regular expression"
     }
   },
   "entity": {
     "sensor": {
-      "port_map": { "name": "Backplane" },
-      "traffic_in": { "name": "Traffic in" },
-      "traffic_out": { "name": "Traffic out" },
-      "ports_up": { "name": "Ports up" },
-      "cpu": { "name": "CPU" },
-      "poe_power": { "name": "PoE power" },
-      "poe_budget": { "name": "PoE budget" },
-      "boot_time": { "name": "Last boot" }
+      "port_map": {
+        "name": "Backplane"
+      },
+      "traffic_in": {
+        "name": "Traffic in"
+      },
+      "traffic_out": {
+        "name": "Traffic out"
+      },
+      "ports_up": {
+        "name": "Ports up"
+      },
+      "cpu": {
+        "name": "CPU"
+      },
+      "poe_power": {
+        "name": "PoE power"
+      },
+      "poe_budget": {
+        "name": "PoE budget"
+      },
+      "boot_time": {
+        "name": "Last boot"
+      }
     }
   }
 }

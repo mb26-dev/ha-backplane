@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 import voluptuous as vol
@@ -12,6 +13,7 @@ from homeassistant.core import callback
 
 from .const import (
     CONF_COMMUNITY,
+    CONF_PORT_FILTER,
     CONF_SCAN_INTERVAL,
     DEFAULT_COMMUNITY,
     DEFAULT_PORT,
@@ -98,15 +100,27 @@ class BackplaneOptionsFlow(OptionsFlow):
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
+        errors: dict[str, str] = {}
         if user_input is not None:
-            return self.async_create_entry(data=user_input)
+            pattern = (user_input.get(CONF_PORT_FILTER) or "").strip()
+            try:
+                if pattern:
+                    re.compile(pattern)
+            except re.error:
+                errors[CONF_PORT_FILTER] = "invalid_regex"
+            else:
+                return self.async_create_entry(
+                    data={**user_input, CONF_PORT_FILTER: pattern}
+                )
         current = self.config_entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+        current_filter = self.config_entry.options.get(CONF_PORT_FILTER, "")
         schema = vol.Schema(
             {
                 vol.Required(CONF_SCAN_INTERVAL, default=current): vol.All(
                     vol.Coerce(int),
                     vol.Range(min=MIN_SCAN_INTERVAL, max=MAX_SCAN_INTERVAL),
-                )
+                ),
+                vol.Optional(CONF_PORT_FILTER, default=current_filter): str,
             }
         )
-        return self.async_show_form(step_id="init", data_schema=schema)
+        return self.async_show_form(step_id="init", data_schema=schema, errors=errors)
