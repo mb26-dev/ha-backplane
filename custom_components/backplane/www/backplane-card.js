@@ -2,7 +2,7 @@
  * Backplane card - live switch front panel for Home Assistant.
  * Served by the Backplane integration (custom_components/backplane).
  */
-const BP_VERSION = "0.3.0";
+const BP_VERSION = "0.4.0";
 
 const SPEED_COLORS = [
   [10000, "#00e5ff"],
@@ -14,6 +14,9 @@ const LAG_COLORS = ["#b388ff", "#69f0ae", "#ff80ab", "#40c4ff"];
 const IN_COLOR = "#ffd700";
 const GRADE_COLORS = { healthy: "#69f0ae", warning: "#ffb300", critical: "#ff5252" };
 const LEVEL_COLORS = { critical: "#ff5252", warning: "#ffb300", info: "#40c4ff" };
+
+const portLabel = (p) =>
+  p.a || (p.nb && p.nb.name) || (p.mac && p.mac.length <= 3 ? (p.mac.find((m) => m.n) || {}).n : "") || "";
 
 const fmtSince = (ts) => {
   if (!ts) return "-";
@@ -99,6 +102,9 @@ const STYLE = `
   .port:hover .body { stroke-width: 2.2; }
   .act.on { animation: bp-blink var(--d, .6s) steps(2, jump-none) infinite; }
   @keyframes bp-blink { 0% { opacity: 1; } 50% { opacity: .12; } 100% { opacity: 1; } }
+  @keyframes bp-flow { to { stroke-dashoffset: -32; } }
+  .topo { margin-bottom: 14px; padding-bottom: 6px; border-bottom: 1px solid rgba(255,215,0,0.25); }
+  .devs { display: grid; gap: 3px; margin-top: 8px; }
   .poebolt { filter: drop-shadow(0 0 3px #ffb300); }
   .sel .body { stroke: #ffffff !important; stroke-width: 2.6; }
   .row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
@@ -137,6 +143,7 @@ class BackplaneCard extends HTMLElement {
     this._selected = {};
     this._history = {};
     this._seeded = {};
+    this._portHistory = {};
     this._signature = "";
     this._narrow = false;
   }
@@ -157,6 +164,10 @@ class BackplaneCard extends HTMLElement {
 
   disconnectedCallback() {
     if (this._resize) this._resize.disconnect();
+  }
+
+  static getConfigElement() {
+    return document.createElement("backplane-card-editor");
   }
 
   static getStubConfig(hass) {
@@ -216,6 +227,13 @@ class BackplaneCard extends HTMLElement {
     hist.in.push([t, attrs.totals.in]);
     hist.out.push([t, attrs.totals.out]);
     this._trim(hist);
+    const perPort = (this._portHistory[entityId] ||= {});
+    for (const port of attrs.ports || []) {
+      const ph = (perPort[port.i] ||= { in: [], out: [] });
+      ph.in.push([t, port.in]);
+      ph.out.push([t, port.out]);
+      this._trim(ph);
+    }
   }
 
   _trim(hist) {
@@ -282,7 +300,72 @@ class BackplaneCard extends HTMLElement {
   _render() {
     if (!this.shadowRoot || !this._hass) return;
     const sections = this._items.map((item) => this._renderSwitch(item)).join("");
-    this.shadowRoot.innerHTML = `<style>${STYLE}</style><ha-card>${sections}</ha-card>`;
+    const topo = this._config.topology === false ? "" : this._renderTopology();
+    this.shadowRoot.innerHTML = `<style>${STYLE}</style><ha-card>${topo}${sections}</ha-card>`;
+  }
+
+  _deviceName(item) {
+    const state = this._hass.states[item.entity];
+    const sys = state && state.attributes.system;
+    return item.name || (sys && sys.name) || item.entity;
+  }
+
+  _renderTopology() {
+    if (this._items.length < 2) return "";
+    const nodes = this._items.map((item) => {
+      const state = this._hass.states[item.entity];
+      const attrs = (state && state.attributes) || {};
+      const aliases = [item.name, attrs.system && attrs.system.name]
+        .filter(Boolean)
+        .map((n) => String(n).toLowerCase());
+      return { item, attrs, name: this._deviceName(item), aliases, up: state && state.state !== "unavailable" };
+    });
+    const links = [];
+    const seen = new Set();
+    nodes.forEach((node, a) => {
+      for (const port of node.attrs.ports || []) {
+        if (!port.nb || !port.nb.name) continue;
+        const b = nodes.findIndex((other, idx) => idx !== a && other.aliases.includes(String(port.nb.name).toLowerCase()));
+        if (b < 0) continue;
+        const key = [Math.min(a, b), Math.max(a, b)].join("-");
+        if (seen.has(key)) continue;
+        seen.add(key);
+        links.push({ a, b, pa: port.n, pb: port.nb.port || "?", spd: port.spd, bps: Math.max(port.in, port.out), up: port.up });
+      }
+    });
+    if (!links.length) return "";
+    const linked = [...new Set(links.flatMap((l) => [l.a, l.b]))];
+    const W = 600;
+    const H = 92;
+    const pos = {};
+    linked.forEach((n, i) => (pos[n] = linked.length === 1 ? W / 2 : 70 + (i * (W - 140)) / (linked.length - 1)));
+    const lines = links
+      .map((l) => {
+        const x1 = pos[l.a];
+        const x2 = pos[l.b];
+        const color = l.up ? speedColor(l.spd) : "#555";
+        const dur = blinkDuration(l.bps);
+        return `<line x1="${x1}" y1="46" x2="${x2}" y2="46" stroke="${color}" stroke-width="3" opacity=".35"/>
+          <line x1="${x1}" y1="46" x2="${x2}" y2="46" stroke="${color}" stroke-width="3" stroke-dasharray="6 10" ${
+            dur ? `style="animation: bp-flow ${(dur * 3).toFixed(2)}s linear infinite"` : ""
+          }/>
+          <text x="${(x1 + x2) / 2}" y="36" text-anchor="middle" fill="#bdbdbd" font-size="10">${esc(l.pa)} ⟷ ${esc(l.pb)} · ${esc(speedLabel(l.spd))}</text>
+          <text x="${(x1 + x2) / 2}" y="64" text-anchor="middle" fill="${IN_COLOR}" font-size="10">${esc(fmtRate(l.bps))}</text>`;
+      })
+      .join("");
+    const boxes = linked
+      .map((n) => {
+        const node = nodes[n];
+        const health = node.attrs.health;
+        const color = health ? GRADE_COLORS[health.grade] : "#69f0ae";
+        return `<g transform="translate(${pos[n] - 62} 30)">
+          <rect width="124" height="32" rx="10" fill="#151515" stroke="rgba(255,215,0,0.6)"/>
+          <circle cx="14" cy="16" r="4" fill="${node.up ? color : "#ff5252"}" style="filter:drop-shadow(0 0 3px ${color})"/>
+          <text x="26" y="20" fill="#ffd700" font-size="11" font-weight="600">${esc(String(node.name).slice(0, 16))}</text>
+        </g>`;
+      })
+      .join("");
+    return `<div class="topo"><svg viewBox="0 0 ${W} ${H}" width="100%" style="max-width:${W * 1.4}px;display:block;margin:0 auto">${lines}${boxes}</svg></div>`;
   }
 
   _renderSwitch(item) {
@@ -296,7 +379,8 @@ class BackplaneCard extends HTMLElement {
       return `<div class="sw unavail">${esc(state.attributes.friendly_name || item.entity)}: waiting for data</div>`;
     }
     const offline = state.state === "unavailable";
-    const ports = a.ports;
+    const names = item.port_names || {};
+    const ports = a.ports.map((p) => (names[p.n] ? { ...p, a: String(names[p.n]) } : p));
     const eth = ports.filter((p) => p.k === "eth");
     const lags = ports.filter((p) => p.k === "lag");
     const lagColor = {};
@@ -669,7 +753,7 @@ class BackplaneCard extends HTMLElement {
   }
 
   _renderNeighbors(item, eth) {
-    const withNb = eth.filter((p) => p.nb);
+    const withNb = eth.filter((p) => p.nb || (p.mac && p.mac.length && p.mac.length <= 3 && p.mac.some((m) => m.n)));
     const busiest = eth
       .filter((p) => p.up)
       .sort((a, b) => Math.max(b.in, b.out) - Math.max(a.in, a.out))
@@ -679,23 +763,23 @@ class BackplaneCard extends HTMLElement {
           .map(
             (p) => `<div class="li" data-port="${p.i}" data-entity="${esc(item.entity)}">
               <span class="p">${esc(p.n)}</span>
-              <span class="n">${esc(p.nb.name || p.nb.descr || "unknown")}</span>
-              <span class="r">${esc(p.nb.port || "")}</span></div>`,
+              <span class="n">${esc(p.nb ? p.nb.name || p.nb.descr || "unknown" : p.mac.filter((m) => m.n).map((m) => m.n).join(", "))}</span>
+              <span class="r">${esc(p.nb ? p.nb.port || "LLDP" : (p.mac.find((m) => m.ip) || {}).ip || "MAC")}</span></div>`,
           )
           .join("")
-      : `<div class="muted">No LLDP neighbours reported.</div>`;
+      : `<div class="muted">No neighbours or known devices found.</div>`;
     const topList = busiest.length
       ? busiest
           .map(
             (p) => `<div class="li" data-port="${p.i}" data-entity="${esc(item.entity)}">
               <span class="p">${esc(p.n)}</span>
-              <span class="n">${esc((p.nb && p.nb.name) || p.a || speedLabel(p.spd))}</span>
+              <span class="n">${esc(portLabel(p) || speedLabel(p.spd))}</span>
               <span class="r">&darr;${esc(fmtRate(p.in))} &uarr;${esc(fmtRate(p.out))}</span></div>`,
           )
           .join("")
       : `<div class="muted">No active ports.</div>`;
     return `
-      <div class="box"><h4>Neighbours <span>LLDP</span></h4><div class="list">${nbList}</div></div>
+      <div class="box"><h4>Neighbours &amp; devices <span>LLDP + MAC</span></h4><div class="list">${nbList}</div></div>
       <div class="box"><h4>Top talkers <span>tap a port for details</span></h4><div class="list">${topList}</div></div>`;
   }
 
@@ -729,9 +813,73 @@ class BackplaneCard extends HTMLElement {
           <span class="close" data-close="1" data-entity="${esc(item.entity)}">close &times;</span></h4>
         <div class="grid">${fields}</div>
         ${port.nb && port.nb.descr ? `<div class="muted">${esc(port.nb.descr)}</div>` : ""}
+        ${this._renderDevices(port)}
+        <div style="margin-top:8px">${this._renderSpark(((this._portHistory[item.entity] || {})[port.i]) || { in: [], out: [] })}</div>
       </div>`;
   }
+
+  _renderDevices(port) {
+    if (port.mac && port.mac.length) {
+      return `<div class="devs"><div class="k" style="font-size:10px;opacity:.6;text-transform:uppercase;letter-spacing:.5px">Devices on this port</div>${port.mac
+        .map(
+          (m) => `<div class="li" style="cursor:default"><span class="p" style="min-width:0">●</span><span class="n">${esc(m.n || m.m)}</span><span class="r">${esc(m.ip || (m.n ? m.m : ""))}</span></div>`,
+        )
+        .join("")}</div>`;
+    }
+    if (port.mac_n) return `<div class="muted">${esc(port.mac_n)} MAC addresses behind this port (uplink)</div>`;
+    return "";
+  }
 }
+
+class BackplaneCardEditor extends HTMLElement {
+  setConfig(config) {
+    this._config = { ...config };
+    this._render();
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+    if (this._form) this._form.hass = hass;
+  }
+
+  _render() {
+    if (!this._form) {
+      this._form = document.createElement("ha-form");
+      this._form.computeLabel = (schema) =>
+        ({ entities: "Backplane devices", sfp_ports: "SFP ports at the end (empty = auto)", topology: "Show topology links" })[schema.name] || schema.name;
+      this._form.addEventListener("value-changed", (ev) => this._changed(ev.detail.value));
+      this.appendChild(this._form);
+    }
+    const list = this._config.entities || (this._config.entity ? [this._config.entity] : []);
+    this._form.schema = [
+      { name: "entities", selector: { entity: { multiple: true, filter: { integration: "backplane", domain: "sensor" } } } },
+      { name: "sfp_ports", selector: { number: { min: 0, max: 8, mode: "box" } } },
+      { name: "topology", selector: { boolean: {} } },
+    ];
+    this._form.data = {
+      entities: list.map((e) => (typeof e === "string" ? e : e.entity)),
+      sfp_ports: this._config.sfp_ports,
+      topology: this._config.topology !== false,
+    };
+    if (this._hass) this._form.hass = this._hass;
+  }
+
+  _changed(value) {
+    const previous = this._config.entities || (this._config.entity ? [this._config.entity] : []);
+    const byId = {};
+    for (const e of previous) byId[typeof e === "string" ? e : e.entity] = e;
+    const config = { ...this._config, entities: (value.entities || []).map((id) => byId[id] || id) };
+    delete config.entity;
+    if (value.sfp_ports === undefined || value.sfp_ports === null || value.sfp_ports === "") delete config.sfp_ports;
+    else config.sfp_ports = Number(value.sfp_ports);
+    if (value.topology === false) config.topology = false;
+    else delete config.topology;
+    this._config = config;
+    this.dispatchEvent(new CustomEvent("config-changed", { detail: { config }, bubbles: true, composed: true }));
+  }
+}
+
+if (!customElements.get("backplane-card-editor")) customElements.define("backplane-card-editor", BackplaneCardEditor);
 
 if (!customElements.get("backplane-card")) {
   customElements.define("backplane-card", BackplaneCard);
@@ -740,7 +888,7 @@ if (!customElements.get("backplane-card")) {
     type: "backplane-card",
     name: "Backplane",
     description: "Live switch front panel: link speed, traffic, PoE, trunks and LLDP neighbours.",
-    preview: false,
+    preview: true,
     documentationURL: "https://github.com/mb26-dev/ha-backplane",
   });
   console.info(`%c BACKPLANE %c v${BP_VERSION} `, "background:#ffd700;color:#000;font-weight:700", "background:#222;color:#ffd700");

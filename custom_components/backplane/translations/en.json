@@ -3,20 +3,44 @@
     "step": {
       "user": {
         "title": "Add a switch",
-        "description": "Backplane reads the switch via SNMP v2c (read-only community is enough).",
+        "description": "Backplane reads the device via SNMP. v2c needs a read-only community, v3 a user with auth (and optionally privacy).",
         "data": {
           "host": "Host / IP address",
-          "community": "SNMP community",
           "port": "SNMP port",
+          "snmp_version": "SNMP version",
+          "community": "Community (v2c)",
+          "v3_user": "User (v3)",
+          "auth_protocol": "Auth protocol (v3)",
+          "auth_password": "Auth password (v3)",
+          "priv_protocol": "Privacy protocol (v3)",
+          "priv_password": "Privacy password (v3, empty = auth password)",
           "name": "Display name (optional)"
+        }
+      },
+      "reconfigure": {
+        "title": "Change connection",
+        "data": {
+          "host": "Host / IP address",
+          "port": "SNMP port",
+          "snmp_version": "SNMP version",
+          "community": "Community (v2c)",
+          "v3_user": "User (v3)",
+          "auth_protocol": "Auth protocol (v3)",
+          "auth_password": "Auth password (v3)",
+          "priv_protocol": "Privacy protocol (v3)",
+          "priv_password": "Privacy password (v3, empty = auth password)"
         }
       }
     },
     "error": {
-      "cannot_connect": "No SNMP answer. Check IP, community, ACLs and that SNMP is enabled on the switch."
+      "cannot_connect": "No SNMP answer. Check IP, community, ACLs and that SNMP is enabled on the switch.",
+      "invalid_auth": "SNMPv3 credentials rejected by the device.",
+      "required": "Required",
+      "password_too_short": "At least 8 characters"
     },
     "abort": {
-      "already_configured": "This switch is already configured."
+      "already_configured": "This switch is already configured.",
+      "reconfigure_successful": "Connection updated."
     }
   },
   "options": {
@@ -25,7 +49,8 @@
         "title": "Backplane options",
         "data": {
           "scan_interval": "Polling interval (seconds)",
-          "port_filter": "Port filter (regex on interface name, empty = auto)"
+          "port_filter": "Port filter (regex on interface name, empty = auto)",
+          "port_events": "Fire port events (link up/down, speed change)"
         },
         "description": "Auto mode hides bridges, Wi-Fi, VPN and VLAN sub-interfaces. Example filter for OpenWrt: ^(wan|lan\\d+)$"
       }
@@ -67,6 +92,9 @@
     "binary_sensor": {
       "health_problem": {
         "name": "Health problem"
+      },
+      "port_link": {
+        "name": "Port {port} link"
       }
     }
   },
@@ -74,6 +102,28 @@
     "health_report": {
       "name": "Health report",
       "description": "Evaluates all Backplane devices and returns a health report (HTML for e-mail, plain text and structured findings)."
+    }
+  },
+  "selector": {
+    "snmp_version": {
+      "options": {
+        "v2c": "SNMP v2c (community)",
+        "v3": "SNMP v3 (user + auth/priv)"
+      }
+    },
+    "auth_protocol": {
+      "options": {
+        "md5": "MD5",
+        "sha": "SHA-1",
+        "sha256": "SHA-256"
+      }
+    },
+    "priv_protocol": {
+      "options": {
+        "none": "None (authNoPriv)",
+        "aes": "AES-128",
+        "des": "DES"
+      }
     }
   }
 }

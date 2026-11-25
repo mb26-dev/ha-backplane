@@ -3,11 +3,22 @@
 from __future__ import annotations
 
 DOMAIN = "backplane"
-VERSION = "0.3.0"
+VERSION = "0.4.0"
 
 CONF_COMMUNITY = "community"
 CONF_SCAN_INTERVAL = "scan_interval"
 CONF_PORT_FILTER = "port_filter"
+CONF_PORT_EVENTS = "port_events"
+CONF_SNMP_VERSION = "snmp_version"
+CONF_V3_USER = "v3_user"
+CONF_AUTH_PROTOCOL = "auth_protocol"
+CONF_AUTH_PASSWORD = "auth_password"
+CONF_PRIV_PROTOCOL = "priv_protocol"
+CONF_PRIV_PASSWORD = "priv_password"
+
+EVENT_PORT = "backplane_port_event"
+FDB_INTERVAL = 120
+MAX_MACS_PER_PORT = 8
 
 DEFAULT_PORT = 161
 DEFAULT_COMMUNITY = "public"
@@ -61,6 +72,13 @@ IFTYPE_LAG = 161
 # ---- Q-BRIDGE-MIB
 DOT1Q_VLAN_NAME = (1, 3, 6, 1, 2, 1, 17, 7, 1, 4, 3, 1, 1)
 DOT1Q_PVID = (1, 3, 6, 1, 2, 1, 17, 7, 1, 4, 5, 1, 1)
+
+# ---- BRIDGE-MIB / Q-BRIDGE-MIB forwarding database (MAC table)
+DOT1D_BASE_PORT_IFINDEX = (1, 3, 6, 1, 2, 1, 17, 1, 4, 1, 2)
+DOT1Q_TP_FDB_PORT = (1, 3, 6, 1, 2, 1, 17, 7, 1, 2, 2, 1, 2)
+DOT1D_TP_FDB_PORT = (1, 3, 6, 1, 2, 1, 17, 4, 3, 1, 2)
+# IP-MIB ARP table (routers): ifIndex.a.b.c.d -> MAC
+IP_NET_TO_MEDIA_PHYS = (1, 3, 6, 1, 2, 1, 4, 22, 1, 2)
 
 # ---- LLDP-MIB
 LLDP_LOC_PORT_ID = (1, 0, 8802, 1, 1, 2, 1, 3, 7, 1, 3)

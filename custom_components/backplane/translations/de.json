@@ -3,20 +3,44 @@
     "step": {
       "user": {
         "title": "Switch hinzufügen",
-        "description": "Backplane liest den Switch per SNMP v2c (Read-only-Community genügt).",
+        "description": "Backplane liest das Gerät per SNMP. v2c braucht eine Read-only-Community, v3 einen Benutzer mit Auth (optional Verschlüsselung).",
         "data": {
           "host": "Host / IP-Adresse",
-          "community": "SNMP-Community",
           "port": "SNMP-Port",
+          "snmp_version": "SNMP-Version",
+          "community": "Community (v2c)",
+          "v3_user": "Benutzer (v3)",
+          "auth_protocol": "Auth-Protokoll (v3)",
+          "auth_password": "Auth-Passwort (v3)",
+          "priv_protocol": "Verschlüsselung (v3)",
+          "priv_password": "Priv-Passwort (v3, leer = Auth-Passwort)",
           "name": "Anzeigename (optional)"
+        }
+      },
+      "reconfigure": {
+        "title": "Verbindung ändern",
+        "data": {
+          "host": "Host / IP-Adresse",
+          "port": "SNMP-Port",
+          "snmp_version": "SNMP-Version",
+          "community": "Community (v2c)",
+          "v3_user": "Benutzer (v3)",
+          "auth_protocol": "Auth-Protokoll (v3)",
+          "auth_password": "Auth-Passwort (v3)",
+          "priv_protocol": "Verschlüsselung (v3)",
+          "priv_password": "Priv-Passwort (v3, leer = Auth-Passwort)"
         }
       }
     },
     "error": {
-      "cannot_connect": "Keine SNMP-Antwort. IP, Community, ACLs und SNMP auf dem Switch prüfen."
+      "cannot_connect": "Keine SNMP-Antwort. IP, Community, ACLs und SNMP auf dem Switch prüfen.",
+      "invalid_auth": "SNMPv3-Zugangsdaten vom Gerät abgelehnt.",
+      "required": "Pflichtfeld",
+      "password_too_short": "Mindestens 8 Zeichen"
     },
     "abort": {
-      "already_configured": "Dieser Switch ist bereits eingerichtet."
+      "already_configured": "Dieser Switch ist bereits eingerichtet.",
+      "reconfigure_successful": "Verbindung aktualisiert."
     }
   },
   "options": {
@@ -26,7 +50,8 @@
         "description": "Automatik blendet Bridges, WLAN, VPN und VLAN-Subinterfaces aus. Beispiel-Filter für OpenWrt: ^(wan|lan\\d+)$",
         "data": {
           "scan_interval": "Abfrageintervall (Sekunden)",
-          "port_filter": "Port-Filter (Regex auf den Interface-Namen, leer = automatisch)"
+          "port_filter": "Port-Filter (Regex auf den Interface-Namen, leer = automatisch)",
+          "port_events": "Port-Events auslösen (Link an/aus, Speed-Wechsel)"
         }
       }
     },
@@ -67,6 +92,9 @@
     "binary_sensor": {
       "health_problem": {
         "name": "Health-Problem"
+      },
+      "port_link": {
+        "name": "Port {port} link"
       }
     }
   },
@@ -74,6 +102,28 @@
     "health_report": {
       "name": "Health-Report",
       "description": "Bewertet alle Backplane-Geräte und liefert einen Health-Report (HTML für E-Mail, Text und strukturierte Befunde)."
+    }
+  },
+  "selector": {
+    "snmp_version": {
+      "options": {
+        "v2c": "SNMP v2c (Community)",
+        "v3": "SNMP v3 (Benutzer + Auth/Priv)"
+      }
+    },
+    "auth_protocol": {
+      "options": {
+        "md5": "MD5",
+        "sha": "SHA-1",
+        "sha256": "SHA-256"
+      }
+    },
+    "priv_protocol": {
+      "options": {
+        "none": "Keine (authNoPriv)",
+        "aes": "AES-128",
+        "des": "DES"
+      }
     }
   }
 }

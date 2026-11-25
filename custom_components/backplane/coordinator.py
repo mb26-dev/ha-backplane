@@ -14,11 +14,19 @@ from typing import Any
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_PORT
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import (
     AUTO_EXCLUDE,
-    CONF_COMMUNITY,
+    CONF_PORT_EVENTS,
+    DOT1D_BASE_PORT_IFINDEX,
+    DOT1D_TP_FDB_PORT,
+    DOT1Q_TP_FDB_PORT,
+    EVENT_PORT,
+    FDB_INTERVAL,
+    IP_NET_TO_MEDIA_PHYS,
+    MAX_MACS_PER_PORT,
     CONF_PORT_FILTER,
     CONF_SCAN_INTERVAL,
     DEFAULT_PORT,
@@ -66,6 +74,7 @@ from .const import (
     SYS_OBJECT_ID,
     SYS_UPTIME,
 )
+from .config_flow import build_client
 from .health import evaluate
 from .snmp import Oid, SnmpClient, SnmpError, SnmpTimeout
 
@@ -153,11 +162,12 @@ class BackplaneCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             update_interval=timedelta(seconds=interval),
         )
         self.host: str = entry.data[CONF_HOST]
-        self.client = SnmpClient(
-            self.host,
-            entry.data[CONF_COMMUNITY],
-            int(entry.data.get(CONF_PORT, DEFAULT_PORT)),
-        )
+        self.client = build_client(dict(entry.data))
+        self._events = bool(entry.options.get(CONF_PORT_EVENTS, True))
+        self._prev_speed: dict[int, int] = {}
+        self._fdb: dict[int, list[str]] = {}
+        self._arp: dict[str, str] = {}
+        self._fdb_ts = 0.0
         self.static: StaticInfo | None = None
         self._static_ts = 0.0
         self._counters: dict[int, tuple[float, int, int]] = {}
@@ -305,6 +315,72 @@ class BackplaneCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
         return info
 
+    # ------------------------------------------------------------ MAC table
+
+    async def _refresh_fdb(self, info: StaticInfo) -> None:
+        """Read the forwarding database (MAC -> port) and, on routers, the ARP table."""
+        client = self.client
+        base = await client.walk(DOT1D_BASE_PORT_IFINDEX, max_repetitions=16)
+        bridge_to_if = {k[0]: v for k, v in base.items() if isinstance(v, int)}
+        fdb_raw = await client.walk(DOT1Q_TP_FDB_PORT, max_repetitions=16)
+        mac_offset = 1  # index = fdbId.m1..m6
+        if not fdb_raw:
+            fdb_raw = await client.walk(DOT1D_TP_FDB_PORT, max_repetitions=16)
+            mac_offset = 0
+        fdb: dict[int, list[str]] = {}
+        for suffix, bridge_port in fdb_raw.items():
+            if not isinstance(bridge_port, int) or bridge_port == 0:
+                continue
+            mac_parts = suffix[mac_offset : mac_offset + 6]
+            if len(mac_parts) != 6:
+                continue
+            mac = ":".join(f"{b:02x}" for b in mac_parts)
+            if_index = bridge_to_if.get(bridge_port, bridge_port)
+            if if_index in info.ports:
+                fdb.setdefault(if_index, [])
+                if mac not in fdb[if_index]:
+                    fdb[if_index].append(mac)
+        self._fdb = fdb
+        arp_raw = await client.walk(IP_NET_TO_MEDIA_PHYS, max_repetitions=16)
+        arp: dict[str, str] = {}
+        for suffix, value in arp_raw.items():
+            if isinstance(value, bytes) and len(value) == 6 and len(suffix) >= 5:
+                arp[":".join(f"{b:02x}" for b in value)] = ".".join(str(x) for x in suffix[-4:])
+        self._arp = arp
+        shared = self.hass.data.setdefault(DOMAIN, {}).setdefault("arp", {})
+        shared[self.host] = arp
+
+    def _resolve_macs(self, macs: list[str]) -> list[dict[str, Any]]:
+        """Attach HA device names and IPs to MAC addresses."""
+        registry = dr.async_get(self.hass)
+        arp_all: dict[str, str] = {}
+        for table in self.hass.data.get(DOMAIN, {}).get("arp", {}).values():
+            arp_all.update(table)
+        result = []
+        for mac in macs[:MAX_MACS_PER_PORT]:
+            item: dict[str, Any] = {"m": mac}
+            device = registry.async_get_device(connections={(dr.CONNECTION_NETWORK_MAC, mac)})
+            if device is not None:
+                item["n"] = device.name_by_user or device.name
+            if mac in arp_all:
+                item["ip"] = arp_all[mac]
+            result.append(item)
+        return result
+
+    def _fire(self, info: StaticInfo, index: int, event: str, **extra: Any) -> None:
+        if not self._events:
+            return
+        self.hass.bus.async_fire(
+            EVENT_PORT,
+            {
+                "device": self.config_entry.title,
+                "host": self.host,
+                "port": info.ports[index]["name"],
+                "event": event,
+                **extra,
+            },
+        )
+
     # ------------------------------------------------------------ polling
 
     async def _async_update_data(self) -> dict[str, Any]:
@@ -313,6 +389,12 @@ class BackplaneCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if self.static is None or now_mono - self._static_ts > DISCOVERY_INTERVAL:
                 self.static = await self._discover()
                 self._static_ts = now_mono
+            if now_mono - self._fdb_ts > FDB_INTERVAL:
+                try:
+                    await self._refresh_fdb(self.static)
+                except SnmpError as err:
+                    _LOGGER.debug("MAC table not readable on %s: %s", self.host, err)
+                self._fdb_ts = now_mono
             return await self._poll(self.static)
         except SnmpTimeout as err:
             raise UpdateFailed(f"No SNMP response from {self.host}") from err
@@ -423,10 +505,22 @@ class BackplaneCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 flaps = self._flap_hist.setdefault(index, deque())
                 if previous is not None and previous != oper:
                     flaps.append(now)
+                    if meta["kind"] == "eth" and oper in (1, 2):
+                        self._fire(info, index, "link_up" if oper == 1 else "link_down")
                 self._prev_oper[index] = oper
                 while flaps and now - flaps[0] > 3600:
                     flaps.popleft()
                 port["flaps_h"] = len(flaps)
+            if is_up and meta["kind"] == "eth":
+                previous_speed = self._prev_speed.get(index)
+                if previous_speed and speed and previous_speed != speed:
+                    self._fire(info, index, "speed_change", old=previous_speed, new=int(speed))
+                self._prev_speed[index] = int(speed)
+            macs = self._fdb.get(index)
+            if macs:
+                port["mac_n"] = len(macs)
+                if len(macs) <= MAX_MACS_PER_PORT:
+                    port["mac"] = self._resolve_macs(macs)
             duplex = values.get(DOT3_DUPLEX + (index,))
             if duplex in (2, 3):
                 port["dup"] = "half" if duplex == 2 else "full"

@@ -241,22 +241,28 @@ def decode_response(data: bytes) -> tuple[int, int, int, list[tuple[Oid, Any]]]:
 # ---------------------------------------------------------------- transport
 
 
+def _decode_v2c(data: bytes) -> tuple[int, Any]:
+    request_id, status, index, varbinds = decode_response(data)
+    return request_id, {"status": status, "index": index, "varbinds": varbinds, "pdu_tag": PDU_RESPONSE}
+
+
 class _Protocol(asyncio.DatagramProtocol):
-    def __init__(self) -> None:
+    def __init__(self, decoder: Any = _decode_v2c) -> None:
         self.transport: asyncio.DatagramTransport | None = None
         self.pending: dict[int, asyncio.Future] = {}
+        self.decoder = decoder
 
     def connection_made(self, transport: asyncio.BaseTransport) -> None:
         self.transport = transport  # type: ignore[assignment]
 
     def datagram_received(self, data: bytes, addr: Any) -> None:
         try:
-            request_id, status, index, varbinds = decode_response(data)
+            request_id, payload = self.decoder(data)
         except (SnmpError, IndexError, ValueError):
             return
         future = self.pending.pop(request_id, None)
         if future is not None and not future.done():
-            future.set_result((status, index, varbinds))
+            future.set_result(payload)
 
     def error_received(self, exc: Exception) -> None:
         # ICMP port unreachable etc. - let the request time out / retry
@@ -271,7 +277,7 @@ class _Protocol(asyncio.DatagramProtocol):
 
 
 class SnmpClient:
-    """Async SNMP v2c client bound to a single agent."""
+    """Async SNMP v2c / v3 client bound to a single agent."""
 
     def __init__(
         self,
@@ -281,6 +287,7 @@ class SnmpClient:
         timeout: float = 3.0,
         retries: int = 2,
         max_varbinds: int = 16,
+        v3: Any = None,
     ) -> None:
         self.host = host
         self.port = port
@@ -291,6 +298,11 @@ class SnmpClient:
         self._protocol: _Protocol | None = None
         self._lock = asyncio.Lock()
         self._request_id = random.randint(1, 0x3FFFFFFF)
+        self._usm = None
+        if v3 is not None:
+            from .usm import UsmSession
+
+            self._usm = UsmSession(v3)
 
     def _next_id(self) -> int:
         self._request_id = (self._request_id % 0x7FFFFFF0) + 1
@@ -300,11 +312,46 @@ class SnmpClient:
         async with self._lock:
             if self._protocol is None or self._protocol.transport is None:
                 loop = asyncio.get_running_loop()
+                decoder = _decode_v2c
+                if self._usm is not None:
+                    usm = self._usm
+
+                    def decoder(data: bytes) -> tuple[int, Any]:
+                        result = usm.decode(data)
+                        return result["request_id"], result
+
                 _, protocol = await loop.create_datagram_endpoint(
-                    _Protocol, remote_addr=(self.host, self.port)
+                    lambda: _Protocol(decoder), remote_addr=(self.host, self.port)
                 )
                 self._protocol = protocol
             return self._protocol
+
+    async def _send(self, protocol: _Protocol, request_id: int, message: bytes) -> dict[str, Any] | None:
+        loop = asyncio.get_running_loop()
+        future: asyncio.Future = loop.create_future()
+        protocol.pending[request_id] = future
+        if protocol.transport is None:
+            protocol.pending.pop(request_id, None)
+            return None
+        protocol.transport.sendto(message)
+        try:
+            return await asyncio.wait_for(future, self.timeout)
+        except TimeoutError:
+            protocol.pending.pop(request_id, None)
+            return None
+
+    async def _discover_engine(self, protocol: _Protocol) -> None:
+        from .usm import PDU_REPORT
+
+        for _attempt in range(self.retries + 1):
+            request_id = self._next_id()
+            reply = await self._send(protocol, request_id, self._usm.discovery_message(request_id))
+            if reply is None:
+                continue
+            if reply.get("pdu_tag") == PDU_REPORT and reply.get("engine_id"):
+                self._usm.set_engine(reply["engine_id"], reply["boots"], reply["time"])
+                return
+        raise SnmpTimeout(f"no SNMPv3 engine discovery response from {self.host}:{self.port}")
 
     async def _request(
         self,
@@ -314,40 +361,46 @@ class SnmpClient:
         max_repetitions: int = 0,
     ) -> list[tuple[Oid, Any]]:
         protocol = await self._ensure_transport()
-        loop = asyncio.get_running_loop()
-        for _attempt in range(self.retries + 1):
+        resyncs = 0
+        attempt = 0
+        while attempt <= self.retries:
+            if self._usm is not None and not self._usm.discovered:
+                await self._discover_engine(protocol)
             request_id = self._next_id()
-            message = encode_request(
-                self.community,
-                pdu_type,
-                request_id,
-                oids,
-                non_repeaters,
-                max_repetitions,
-            )
-            future: asyncio.Future = loop.create_future()
-            protocol.pending[request_id] = future
-            if protocol.transport is None:
-                protocol.pending.pop(request_id, None)
-                self._protocol = None
-                protocol = await self._ensure_transport()
-                continue
-            protocol.transport.sendto(message)
-            try:
-                status, index, varbinds = await asyncio.wait_for(
-                    future, self.timeout
+            if self._usm is not None:
+                message = self._usm.encode(request_id, pdu_type, oids, non_repeaters, max_repetitions)
+            else:
+                message = encode_request(
+                    self.community, pdu_type, request_id, oids, non_repeaters, max_repetitions
                 )
-            except TimeoutError:
-                protocol.pending.pop(request_id, None)
+            reply = await self._send(protocol, request_id, message)
+            if reply is None:
+                if protocol.transport is None:
+                    self._protocol = None
+                    protocol = await self._ensure_transport()
+                attempt += 1
                 continue
+            if self._usm is not None and reply.get("pdu_tag") == 0xA8:
+                kind, text = self._usm.report_reason(reply["varbinds"])
+                if kind in ("time", "engine") and resyncs < 2:
+                    resyncs += 1
+                    if kind == "time":
+                        self._usm.set_engine(reply["engine_id"], reply["boots"], reply["time"])
+                    else:
+                        self._usm.engine.engine_id = b""
+                    continue
+                from .usm import SnmpAuthError
+
+                raise SnmpAuthError(f"SNMPv3 rejected by {self.host}: {text}")
+            status = reply["status"]
             if status == _ERROR_TOO_BIG and pdu_type == PDU_GET and len(oids) > 1:
                 half = len(oids) // 2
                 return await self._request(pdu_type, oids[:half]) + await self._request(
                     pdu_type, oids[half:]
                 )
             if status:
-                raise SnmpError(f"agent error-status {status} at index {index}")
-            return varbinds
+                raise SnmpError(f"agent error-status {status} at index {reply['index']}")
+            return reply["varbinds"]
         raise SnmpTimeout(f"no response from {self.host}:{self.port}")
 
     async def get(self, oids: Iterable[Oid]) -> dict[Oid, Any]:
