@@ -2,7 +2,7 @@
  * Backplane card - live switch front panel for Home Assistant.
  * Served by the Backplane integration (custom_components/backplane).
  */
-const BP_VERSION = "0.4.1";
+const BP_VERSION = "0.4.2";
 
 const SPEED_COLORS = [
   [10000, "#00e5ff"],

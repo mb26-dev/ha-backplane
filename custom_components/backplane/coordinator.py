@@ -133,6 +133,19 @@ def _printable(value: Any) -> str:
 
 
 @dataclass
+
+def _device_for_mac(registry: dr.DeviceRegistry, mac: str) -> dr.DeviceEntry | None:
+    """Look up a device by MAC across HA versions."""
+    conn = (dr.CONNECTION_NETWORK_MAC, mac)
+    by_conn = getattr(registry, "async_get_device_by_connection", None)
+    if by_conn is not None:
+        return by_conn(conn)
+    by_many = getattr(registry, "async_get_devices", None)
+    if by_many is not None:
+        devices = by_many(connections={conn})
+        return next(iter(devices), None) if devices else None
+    return registry.async_get_device(connections={conn})
+
 class StaticInfo:
     """Slow-changing switch facts, re-read every DISCOVERY_INTERVAL."""
 
@@ -391,7 +404,7 @@ class BackplaneCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         result = []
         for mac in macs[:MAX_MACS_PER_PORT]:
             item: dict[str, Any] = {"m": mac}
-            device = registry.async_get_device(connections={(dr.CONNECTION_NETWORK_MAC, mac)})
+            device = _device_for_mac(registry, mac)
             if device is not None:
                 item["n"] = device.name_by_user or device.name
             if mac in arp_all:
