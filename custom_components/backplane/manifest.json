@@ -1,0 +1,13 @@
+{
+  "domain": "backplane",
+  "name": "Backplane",
+  "codeowners": ["@mb26-dev"],
+  "config_flow": true,
+  "dependencies": ["frontend", "http"],
+  "documentation": "https://github.com/mb26-dev/ha-backplane",
+  "integration_type": "device",
+  "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/mb26-dev/ha-backplane/issues",
+  "requirements": [],
+  "version": "0.1.0"
+}

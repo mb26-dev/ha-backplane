@@ -1,0 +1,44 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Add a switch",
+        "description": "Backplane reads the switch via SNMP v2c (read-only community is enough).",
+        "data": {
+          "host": "Host / IP address",
+          "community": "SNMP community",
+          "port": "SNMP port",
+          "name": "Display name (optional)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "No SNMP answer. Check IP, community, ACLs and that SNMP is enabled on the switch."
+    },
+    "abort": {
+      "already_configured": "This switch is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Backplane options",
+        "data": {
+          "scan_interval": "Polling interval (seconds)"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "port_map": { "name": "Backplane" },
+      "traffic_in": { "name": "Traffic in" },
+      "traffic_out": { "name": "Traffic out" },
+      "ports_up": { "name": "Ports up" },
+      "cpu": { "name": "CPU" },
+      "poe_power": { "name": "PoE power" },
+      "poe_budget": { "name": "PoE budget" },
+      "boot_time": { "name": "Last boot" }
+    }
+  }
+}
