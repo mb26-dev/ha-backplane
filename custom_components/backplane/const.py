@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 DOMAIN = "backplane"
-VERSION = "0.1.0"
+VERSION = "0.1.1"
 
 CONF_COMMUNITY = "community"
 CONF_SCAN_INTERVAL = "scan_interval"

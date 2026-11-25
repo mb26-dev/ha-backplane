@@ -2,7 +2,7 @@
  * Backplane card - live switch front panel for Home Assistant.
  * Served by the Backplane integration (custom_components/backplane).
  */
-const BP_VERSION = "0.1.0";
+const BP_VERSION = "0.1.1";
 
 const SPEED_COLORS = [
   [10000, "#00e5ff"],
@@ -82,7 +82,11 @@ const STYLE = `
   .chip b { color: #ffd700; font-weight: 600; }
   .chip.bad { background: rgba(255,82,82,0.15); border-color: #ff5252; color: #ff8a80; }
   .panel { margin-top: 10px; }
-  .panel svg { width: 100%; height: auto; display: block; }
+  .panel svg { width: 100%; max-width: 1120px; height: auto; display: block; margin: 0 auto; }
+  .sparkwrap { position: relative; }
+  .sparkwrap .sl { position: absolute; font-size: 10px; opacity: .6; }
+  .sparkwrap .tl { top: 0; left: 4px; }
+  .sparkwrap .br { bottom: 2px; right: 4px; }
   .port { cursor: pointer; }
   .port:hover .body { stroke-width: 2.2; }
   .act.on { animation: bp-blink var(--d, .6s) steps(2, jump-none) infinite; }
@@ -528,7 +532,7 @@ class BackplaneCard extends HTMLElement {
     const start = now - 3600 * 1000;
     const all = hist.in.concat(hist.out);
     if (hist.in.length < 2) {
-      return `<svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"><text x="${W / 2}" y="${H / 2 + 4}" text-anchor="middle" fill="#888" font-size="11">collecting samples...</text></svg>`;
+      return `<div class="spark" style="display:flex;align-items:center;justify-content:center;font-size:11px;opacity:.6">collecting samples...</div>`;
     }
     const max = Math.max(1000, ...all.map((p) => p[1])) * 1.1;
     const sx = (t) => ((t - start) / (now - start)) * W;
@@ -538,7 +542,7 @@ class BackplaneCard extends HTMLElement {
     const first = hist.in[0];
     const last = hist.in[hist.in.length - 1];
     const area = `${inLine} L${sx(last[0]).toFixed(1)} ${H} L${sx(first[0]).toFixed(1)} ${H} Z`;
-    return `
+    return `<div class="sparkwrap"><span class="sl tl">${esc(fmtRate(max / 1.1))}</span><span class="sl br">60 min</span>
       <svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
         <defs><linearGradient id="bp-area" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0" stop-color="${IN_COLOR}" stop-opacity=".35"/><stop offset="1" stop-color="${IN_COLOR}" stop-opacity="0"/>
@@ -547,9 +551,7 @@ class BackplaneCard extends HTMLElement {
         <path d="${area}" fill="url(#bp-area)"/>
         <path d="${inLine}" fill="none" stroke="${IN_COLOR}" stroke-width="1.6" vector-effect="non-scaling-stroke"/>
         <path d="${line(hist.out)}" fill="none" stroke="${OUT_COLOR}" stroke-width="1.4" vector-effect="non-scaling-stroke" opacity=".9"/>
-        <text x="4" y="11" fill="#999" font-size="9">${esc(fmtRate(max / 1.1))}</text>
-        <text x="${W - 4}" y="${H - 7}" text-anchor="end" fill="#777" font-size="9">60 min</text>
-      </svg>`;
+      </svg></div>`;
   }
 
   _renderPoeList(item, eth) {
