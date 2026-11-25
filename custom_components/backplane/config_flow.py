@@ -68,6 +68,13 @@ async def _probe(data: dict[str, Any]) -> dict[str, str]:
     client = build_client(data, timeout=4.0, retries=1)
     try:
         values = await client.get([SYS_DESCR, SYS_NAME])
+    except SnmpTimeout as err:
+        usm = getattr(client, "_usm", None)
+        if usm is not None and usm.discovered:
+            # the agent answered engine discovery but ignores our authenticated
+            # requests: almost always a wrong user, protocol or password
+            raise SnmpAuthError("no answer to authenticated request") from err
+        raise
     finally:
         client.close()
     if SYS_DESCR not in values:

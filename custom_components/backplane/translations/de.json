@@ -33,8 +33,8 @@
       }
     },
     "error": {
-      "cannot_connect": "Keine SNMP-Antwort. IP, Community, ACLs und SNMP auf dem Switch prüfen.",
-      "invalid_auth": "SNMPv3-Zugangsdaten vom Gerät abgelehnt.",
+      "cannot_connect": "Keine SNMP-Antwort. IP, Port, Firewall/ACLs prüfen und ob SNMP auf dem Gerät aktiv ist. Bei v2c auch die Community prüfen.",
+      "invalid_auth": "SNMPv3-Anmeldung fehlgeschlagen. Benutzername, Auth-Protokoll (MD5 / SHA-1 / SHA-256), Privacy-Protokoll (AES / DES) und beide Passwörter prüfen - sie müssen exakt zum Gerät passen.",
       "required": "Pflichtfeld",
       "password_too_short": "Mindestens 8 Zeichen"
     },

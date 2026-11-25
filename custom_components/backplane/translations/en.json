@@ -33,8 +33,8 @@
       }
     },
     "error": {
-      "cannot_connect": "No SNMP answer. Check IP, community, ACLs and that SNMP is enabled on the switch.",
-      "invalid_auth": "SNMPv3 credentials rejected by the device.",
+      "cannot_connect": "No SNMP answer. Check IP, port, firewall/ACLs and that SNMP is enabled on the device. For v2c also check the community.",
+      "invalid_auth": "SNMPv3 login failed. Check the user name, the auth protocol (MD5 / SHA-1 / SHA-256), the privacy protocol (AES / DES) and both passwords - they must match the device exactly.",
       "required": "Required",
       "password_too_short": "At least 8 characters"
     },

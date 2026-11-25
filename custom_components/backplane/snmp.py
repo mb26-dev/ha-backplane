@@ -318,7 +318,9 @@ class SnmpClient:
 
                     def decoder(data: bytes) -> tuple[int, Any]:
                         result = usm.decode(data)
-                        return result["request_id"], result
+                        # key on msgID: Report PDUs (wrong digest, unknown user, ...)
+                        # often carry request-id 0, but always echo the msgID
+                        return result["msg_id"], result
 
                 _, protocol = await loop.create_datagram_endpoint(
                     lambda: _Protocol(decoder), remote_addr=(self.host, self.port)
