@@ -1,8 +1,6 @@
 <p align="center">
-  <img src="images/logo.jpg" alt="Backplane logo" width="260">
+  <img src="images/banner.jpg" alt="Backplane - SNMP Monitor" width="100%">
 </p>
-
-<h1 align="center">Backplane</h1>
 
 <p align="center">
   <b>Your network switch, live in Home Assistant.</b><br>
@@ -16,7 +14,11 @@
 </p>
 
 <p align="center">
-  <img src="images/card-desktop.jpg" alt="Backplane card" width="900">
+  <img src="images/card-desktop.jpg" alt="Switch front panel with PoE, trunk, health and port details" width="900">
+</p>
+
+<p align="center">
+  <img src="images/router-desktop.jpg" alt="Topology link between two switches and an OpenWrt router" width="900">
 </p>
 
 ## Features
@@ -45,12 +47,10 @@ Tested with HP J9773A 2530-24G-PoEP (YA.16.11) and an OpenWrt router (Xiaomi AX3
 - **Routers / OpenWrt** - bridges, Wi-Fi, VPN and VLAN sub-interfaces are hidden automatically, the WAN port is highlighted and small devices get a single-row panel. CPU comes from HOST-RESOURCES-MIB.
 
 <p align="center">
-  <img src="images/card-phone.jpg" alt="Backplane on a phone" width="300">
+  <img src="images/card-phone.jpg" alt="Switch on a phone" width="300">
   &nbsp;
   <img src="images/router-phone.jpg" alt="OpenWrt router on a phone" width="300">
 </p>
-
-<p align="center"><img src="images/router-desktop.jpg" alt="OpenWrt router in Backplane" width="900"></p>
 
 ## Installation
 
@@ -128,6 +128,8 @@ Options: polling interval (default 30 s, 10-600 s), port events on/off and an op
 
 ## Entities
 
+<p align="center"><img src="images/device-page.jpg" alt="Backplane device in Home Assistant" width="700"></p>
+
 | Entity | Description |
 |---|---|
 | `sensor.<switch>_backplane` | Ports up; attributes carry the full port map for the card (not stored in the recorder) |
@@ -181,6 +183,8 @@ actions:
       message: "{{ report.text }}"
 ```
 
+<p align="center"><img src="images/health-report.jpg" alt="Health report e-mail" width="560"></p>
+
 For an HTML mail use the SMTP integration's legacy notify action (`notify.<smtp_name>`) with `data: {html: "{{ report.html }}"}`.
 
 Findings and thresholds:
@@ -208,7 +212,9 @@ entities:
 | `sfp_ports` | number of SFP ports at the end (auto: 4 for 28/52-port switches) |
 | `topology` | `false` hides the link diagram between devices |
 
-The card has a visual editor (device picker).
+The card has a visual editor (device picker):
+
+<p align="center"><img src="images/card-editor.jpg" alt="Card editor" width="420"></p>
 
 ### Vendor badges
 
