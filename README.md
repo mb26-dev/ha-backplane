@@ -27,22 +27,30 @@
 - **LLDP** - neighbours per port (name and remote port), shown on the panel and in a list
 - **Who is on which port** - the switch MAC table is matched with the devices Home Assistant already knows (and with the ARP table of a router), so a port shows *omv-qnap* instead of just *1 Gbit*
 - **Topology** - devices in one card that see each other via LLDP are connected with an animated link line (ports, speed, live traffic)
-- **Health score** - 0-100 per device with findings: hardware failures, PoE budget, rising error/CRC counters, flapping ports, half duplex, degraded trunks, high CPU, recent reboots
+- **Health score** - 0-100 per device with findings: hardware failures, PoE budget, rising error/CRC counters, flapping ports, half duplex, degraded trunks, saturated ports, broadcast storms, spanning-tree instability (loops), high CPU, recent reboots
+- **PoE restart** - one button per PoE port power-cycles the connected device (camera, access point, phone); needs SNMP write access
+- **Per-port sensors** - receive / transmit rate and utilisation per port for long-term statistics (disabled by default, enable the ports you care about)
 - **Health report** - `backplane.health_report` returns an e-mail ready HTML report (plus plain text and structured findings)
 - **Hardware health** - power supply / fan status (HP/Aruba ProCurve)
 - **Traffic chart** - last 60 minutes of switched traffic, seeded from the recorder
 - **Port details** - tap a port: speed, in/out, utilisation, errors, VLAN, PoE, trunk, neighbour
-- **Phone friendly** - the panel splits into two rows on narrow screens
+- **Phone friendly** - one chassis with stacked port banks on narrow screens
+- **Vendor badges** - 30+ vendors detected automatically, own logos per device possible
 - **SNMP v2c and v3** - own async SNMP client (GET/GETBULK, USM with MD5/SHA/SHA-256 and AES-128/DES). No pysnmp, no blocking MIB loading, small UDP packets that also work over VPN tunnels
 - **Automations** - `backplane_port_event` on link up/down and speed change, optional link entity per port
 - **UI setup and reconfigure** - add a device with IP and community or v3 user; change connection settings later without deleting it; diagnostics download with secrets redacted
-- **UI setup** - add a switch with IP and community, nothing in YAML
 
 Tested with HP J9773A 2530-24G-PoEP (YA.16.11) and an OpenWrt router (Xiaomi AX3000T, net-snmp). Any device with IF-MIB works; PoE, LLDP and Q-BRIDGE data are used when the device provides them.
 
 - **Routers / OpenWrt** - bridges, Wi-Fi, VPN and VLAN sub-interfaces are hidden automatically, the WAN port is highlighted and small devices get a single-row panel. CPU comes from HOST-RESOURCES-MIB.
 
-<p align="center"><img src="images/card-phone.jpg" alt="Backplane on a phone" width="320"></p>
+<p align="center">
+  <img src="images/card-phone.jpg" alt="Backplane on a phone" width="300">
+  &nbsp;
+  <img src="images/router-phone.jpg" alt="OpenWrt router on a phone" width="300">
+</p>
+
+<p align="center"><img src="images/router-desktop.jpg" alt="OpenWrt router in Backplane" width="900"></p>
 
 ## Installation
 
@@ -88,6 +96,19 @@ write memory
 
 Avoid leaving the factory `public` community with manager (write) rights enabled.
 
+### Write access for PoE restart (optional)
+
+The PoE restart buttons switch `pethPsePortAdminEnable` off and on again, which needs write access. Use a separate SNMPv3 user for that and enter it in Backplane instead of the read-only user:
+
+```
+configure terminal
+snmpv3 user "backplane-rw" auth sha "auth-password" priv aes "priv-password"
+snmpv3 group managerpriv user "backplane-rw" sec-model ver3
+write memory
+```
+
+Without write access nothing breaks - pressing a button just shows that the switch refused the request.
+
 ## Setup
 
 **Settings → Devices & services → Add integration → Backplane**, then enter:
@@ -119,10 +140,13 @@ Options: polling interval (default 30 s, 10-600 s), port events on/off and an op
 | `binary_sensor.<switch>_health_problem` | On when there is a warning or critical finding |
 | `binary_sensor.<switch>_power_supply` / `_fan` | Hardware problem (HP/Aruba) |
 | `binary_sensor.<switch>_port_<n>_link` | Link state per port with speed, traffic, devices (disabled by default) |
+| `sensor.<switch>_port_<n>_receive` / `_transmit` | Traffic per port in Mbit/s (disabled by default) |
+| `sensor.<switch>_port_<n>_utilisation` | Port utilisation in % of link speed (disabled by default) |
+| `button.<switch>_port_<n>_poe_restart` | Power-cycle PoE on the port for 5 s (disabled by default, needs write access) |
 
 ### Port events
 
-`backplane_port_event` with `device`, `host`, `port`, `event` (`link_up`, `link_down`, `speed_change` + `old`/`new`):
+`backplane_port_event` with `device`, `host`, `port`, `event` (`link_up`, `link_down`, `speed_change` + `old`/`new`, `poe_off`, `poe_on`):
 
 ```yaml
 triggers:
@@ -163,9 +187,9 @@ Findings and thresholds:
 
 | Level | Finding |
 |---|---|
-| critical | power supply / fan failure, PoE budget > 95 %, > 500 errors per hour on a port, trunk down |
-| warning | PoE budget > 80 %, ≥ 10 errors per hour (incl. CRC), ≥ 3 link changes per hour, half duplex, trunk member down, CPU ≥ 80 % |
-| info | reboot within 24 h, 10 Mbit link |
+| critical | power supply / fan failure, PoE budget > 95 %, > 500 errors per hour on a port, trunk down, broadcast storm (≥ 5000 pkt/s on a port) |
+| warning | PoE budget > 80 %, ≥ 10 errors per hour (incl. CRC), ≥ 3 link changes per hour, half duplex, trunk member down, CPU ≥ 80 %, port ≥ 95 % of link speed, ≥ 1000 broadcast pkt/s, ≥ 3 spanning-tree topology changes per hour |
+| info | reboot within 24 h, 10 Mbit link, port ≥ 80 % of link speed, a spanning-tree topology change in the last hour |
 
 ## Card
 

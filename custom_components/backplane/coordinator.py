@@ -38,6 +38,10 @@ from .const import (
     DOT1Q_PVID,
     DOT1Q_VLAN_NAME,
     HR_PROCESSOR_LOAD,
+    PETH_PORT_ADMIN,
+    POE_RESTART_OFF_SECONDS,
+    STP_TIME_SINCE_TC,
+    STP_TOP_CHANGES,
     HP_CPU,
     HP_ENTERPRISE,
     HP_POE_PORT_POWER_MW,
@@ -46,6 +50,7 @@ from .const import (
     HP_SENSOR_STATUS,
     IF_ADMIN_STATUS,
     IF_ALIAS,
+    IF_HC_IN_BCAST,
     IF_HC_IN_OCTETS,
     IF_HC_OUT_OCTETS,
     IF_HIGH_SPEED,
@@ -172,6 +177,8 @@ class StaticInfo:
     has_hp_poe_power: bool = False
     has_cpu: bool = False
     has_dot3: bool = False
+    has_bcast: bool = False
+    has_stp: bool = False
     hr_cpus: list[int] = field(default_factory=list)
 
 
@@ -227,6 +234,8 @@ class BackplaneCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._err_hist: dict[int, deque[tuple[float, int]]] = {}
         self._flap_hist: dict[int, deque[float]] = {}
         self._prev_oper: dict[int, int] = {}
+        self._bcast: dict[int, tuple[float, int]] = {}
+        self._stp_hist: deque[tuple[float, int]] = deque()
         custom = (entry.options.get(CONF_PORT_FILTER) or "").strip()
         try:
             self._port_filter = re.compile(custom) if custom else None
@@ -342,6 +351,12 @@ class BackplaneCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if first_eth is not None:
             dot3 = await client.get([DOT3_DUPLEX + (first_eth,)])
             info.has_dot3 = bool(dot3)
+            bcast = await client.get([IF_HC_IN_BCAST + (first_eth,)])
+            info.has_bcast = bool(bcast)
+
+        # spanning tree counters (only meaningful when STP is enabled)
+        stp = await client.get([STP_TOP_CHANGES])
+        info.has_stp = isinstance(stp.get(STP_TOP_CHANGES), int)
 
         # PoE capability
         poe = await client.get([PETH_MAIN_POWER])
@@ -368,6 +383,20 @@ class BackplaneCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             info.has_poe,
         )
         return info
+
+    async def async_restart_poe(self, index: int) -> None:
+        """Power-cycle PoE on one port (needs SNMP write access)."""
+        oid = PETH_PORT_ADMIN + (index,)
+        await self.client.set_int(oid, 2)
+        self._fire_simple(index, "poe_off")
+        await asyncio.sleep(POE_RESTART_OFF_SECONDS)
+        await self.client.set_int(oid, 1)
+        self._fire_simple(index, "poe_on")
+        await self.async_request_refresh()
+
+    def _fire_simple(self, index: int, event: str) -> None:
+        if self.static is not None and index in self.static.ports:
+            self._fire(self.static, index, event)
 
     # ------------------------------------------------------------ MAC table
 
@@ -480,6 +509,10 @@ class BackplaneCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if info.has_dot3:
             for i in eth:
                 oids += [DOT3_DUPLEX + (i,), DOT3_FCS_ERRORS + (i,)]
+        if info.has_bcast:
+            oids += [IF_HC_IN_BCAST + (i,) for i in eth]
+        if info.has_stp:
+            oids += [STP_TOP_CHANGES, STP_TIME_SINCE_TC]
         if info.has_poe:
             oids += [PETH_MAIN_POWER, PETH_MAIN_STATUS, PETH_MAIN_CONSUMPTION]
             oids += [PETH_PORT_DETECTION + (i,) for i in eth]
@@ -553,6 +586,14 @@ class BackplaneCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "ie": int(values.get(IF_IN_ERRORS + (index,), 0) or 0),
                 "oe": int(values.get(IF_OUT_ERRORS + (index,), 0) or 0),
             }
+            if is_up and speed:
+                port["u"] = round(max(rate_in, rate_out) / (int(speed) * 1_000_000) * 100, 1)
+            bcast = values.get(IF_HC_IN_BCAST + (index,))
+            if isinstance(bcast, int):
+                prev_b = self._bcast.get(index)
+                if prev_b is not None and now > prev_b[0] and bcast >= prev_b[1]:
+                    port["bc"] = round((bcast - prev_b[1]) / (now - prev_b[0]))
+                self._bcast[index] = (now, bcast)
             # link since / flapping / error rate (health)
             last_change = values.get(IF_LAST_CHANGE + (index,))
             if isinstance(last_change, int) and last_change <= int(values[SYS_UPTIME]):
@@ -650,6 +691,20 @@ class BackplaneCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 if isinstance(values.get(HR_PROCESSOR_LOAD + (i,)), int)
             ]
             cpu = round(sum(loads) / len(loads)) if loads else None
+        stp: dict[str, Any] | None = None
+        changes = values.get(STP_TOP_CHANGES)
+        if isinstance(changes, int):
+            if self._stp_hist and changes < self._stp_hist[-1][1]:
+                self._stp_hist.clear()
+            self._stp_hist.append((now, changes))
+            while len(self._stp_hist) > 1 and now - self._stp_hist[1][0] >= 3600:
+                self._stp_hist.popleft()
+            stp = {"tc": changes}
+            if len(self._stp_hist) > 1:
+                stp["tc_h"] = changes - self._stp_hist[0][1]
+            since = values.get(STP_TIME_SINCE_TC)
+            if isinstance(since, int):
+                stp["since"] = int(since / 100)
         data: dict[str, Any] = {
             "system": {
                 "name": info.name,
@@ -666,6 +721,7 @@ class BackplaneCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             },
             "ports": ports,
             "poe": poe,
+            "stp": stp,
             "sensors": sensors,
             "totals": {
                 "in": round(total_in),

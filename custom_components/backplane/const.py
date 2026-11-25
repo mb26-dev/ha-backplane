@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 DOMAIN = "backplane"
-VERSION = "0.5.0"
+VERSION = "0.6.0"
 
 CONF_COMMUNITY = "community"
 CONF_SCAN_INTERVAL = "scan_interval"
@@ -116,3 +116,20 @@ HP_SENSOR_STATES = {
     4: "good",
     5: "not_present",
 }
+
+# broadcast counters (IF-MIB ifXTable)
+IF_HC_IN_BCAST = (1, 3, 6, 1, 2, 1, 31, 1, 1, 1, 9)
+BCAST_WARN_PPS = 1000
+BCAST_CRIT_PPS = 5000
+
+# spanning tree (BRIDGE-MIB)
+STP_TIME_SINCE_TC = (1, 3, 6, 1, 2, 1, 17, 2, 3, 0)
+STP_TOP_CHANGES = (1, 3, 6, 1, 2, 1, 17, 2, 4, 0)
+STP_TC_WARN_PER_HOUR = 3
+
+# port utilisation
+UTIL_WARN_PCT = 80
+
+# PoE port control (POWER-ETHERNET-MIB pethPsePortAdminEnable, group 1)
+PETH_PORT_ADMIN = (1, 3, 6, 1, 2, 1, 105, 1, 1, 1, 3, 1)
+POE_RESTART_OFF_SECONDS = 5

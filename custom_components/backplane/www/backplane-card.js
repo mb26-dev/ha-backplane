@@ -2,7 +2,7 @@
  * Backplane card - live switch front panel for Home Assistant.
  * Served by the Backplane integration (custom_components/backplane).
  */
-const BP_VERSION = "0.5.0";
+const BP_VERSION = "0.6.0";
 
 const SPEED_COLORS = [
   [10000, "#00e5ff"],
@@ -142,6 +142,13 @@ const STYLE = `
   .fd span { overflow: hidden; text-overflow: ellipsis; }
   .unavail { padding: 16px; text-align: center; opacity: .7; }
 `;
+
+const fmtAgo = (seconds) => {
+  const s = Math.max(0, Math.round(seconds));
+  if (s < 3600) return `${Math.max(1, Math.round(s / 60))} min`;
+  if (s < 86400) return `${Math.round(s / 3600)} h`;
+  return `${Math.round(s / 86400)} d`;
+};
 
 function wordmark(name, x, y, maxW) {
   const label = String(name || "").toUpperCase();
@@ -475,7 +482,7 @@ class BackplaneCard extends HTMLElement {
         </div>
         <div class="panel">${svg}</div>
         <div class="legend">${legend}</div>
-        <div class="row">${this._renderHealth(a.health)}${traffic}${poeBox}</div>
+        <div class="row">${this._renderHealth(a.health, a.stp)}${traffic}${poeBox}</div>
         <div class="row">${detail}</div>
         ${offline ? `<div class="warn">Switch not reachable - showing last known state.</div>` : ""}
       </div>`;
@@ -735,7 +742,7 @@ class BackplaneCard extends HTMLElement {
       </svg></div>`;
   }
 
-  _renderHealth(health) {
+  _renderHealth(health, stp) {
     if (!health) return "";
     const color = GRADE_COLORS[health.grade] || "#888";
     const r = 26;
@@ -754,7 +761,11 @@ class BackplaneCard extends HTMLElement {
           .map((f) => `<div class="fd"><i style="background:${LEVEL_COLORS[f.level]};box-shadow:0 0 5px ${LEVEL_COLORS[f.level]}"></i><span>${esc(f.msg)}</span></div>`)
           .join("") + (more > 0 ? `<div class="muted">+${more} more</div>` : "")
       : `<div class="fd"><i style="background:#69f0ae;box-shadow:0 0 5px #69f0ae"></i><span>All ports and hardware healthy</span></div>`;
-    return `<div class="box"><h4>Health <span style="color:${color}">${esc(health.grade)}</span></h4><div class="hb">${ring}<div>${list}</div></div></div>`;
+    const stpLine =
+      stp && stp.tc != null
+        ? `<div class="muted" style="margin-top:6px">Spanning tree: ${esc(stp.tc)} topology changes${stp.since != null ? ` &middot; last ${esc(fmtAgo(stp.since))} ago` : ""}</div>`
+        : "";
+    return `<div class="box"><h4>Health <span style="color:${color}">${esc(health.grade)}</span></h4><div class="hb">${ring}<div>${list}${stpLine}</div></div></div>`;
   }
 
   _renderPoeList(item, eth) {
@@ -819,6 +830,7 @@ class BackplaneCard extends HTMLElement {
       port.dup ? kv("Duplex", port.dup, port.dup === "half" ? "#ffb300" : null) : "",
       port.ls ? kv(port.up ? "Link up since" : "Down since", fmtSince(port.ls)) : "",
       port.flaps_h ? kv("Link changes (1 h)", port.flaps_h, "#ffb300") : "",
+      port.bc != null ? kv("Broadcast", `${port.bc} pkt/s`, port.bc >= 1000 ? "#ff5252" : null) : "",
       port.vlan != null ? kv("VLAN (PVID)", port.vlan) : "",
       port.poe ? kv("PoE", port.pw != null ? `${port.pw} W` : port.poe, port.poe === "delivering" ? "#ffb300" : null) : "",
       port.lag ? kv("Trunk", port.lag, lagColor[port.lag]) : "",

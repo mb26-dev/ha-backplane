@@ -87,6 +87,15 @@
       },
       "health": {
         "name": "Health"
+      },
+      "port_rx": {
+        "name": "Port {port} receive"
+      },
+      "port_tx": {
+        "name": "Port {port} transmit"
+      },
+      "port_util": {
+        "name": "Port {port} utilisation"
       }
     },
     "binary_sensor": {
@@ -95,6 +104,11 @@
       },
       "port_link": {
         "name": "Port {port} link"
+      }
+    },
+    "button": {
+      "poe_restart": {
+        "name": "Port {port} PoE restart"
       }
     }
   },
@@ -124,6 +138,14 @@
         "aes": "AES-128",
         "des": "DES"
       }
+    }
+  },
+  "exceptions": {
+    "poe_refused": {
+      "message": "The switch refused to switch PoE. The SNMP user or community needs write access (for HP/Aruba: an SNMPv3 user in the group managerpriv)."
+    },
+    "poe_timeout": {
+      "message": "No answer from the switch while switching PoE."
     }
   }
 }

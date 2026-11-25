@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .snmp import (
+    encode_varbinds,
     PDU_RESPONSE,
     SnmpError,
     _dec_oid,
@@ -198,7 +199,7 @@ class UsmSession:
         non_repeaters: int = 0,
         max_repetitions: int = 0,
     ) -> bytes:
-        varbinds = b"".join(_tlv(_SEQUENCE, _enc_oid(oid) + _tlv(_NULL, b"")) for oid in oids)
+        varbinds = encode_varbinds(oids)
         pdu = _tlv(
             pdu_type,
             _enc_int(msg_id) + _enc_int(non_repeaters) + _enc_int(max_repetitions) + _tlv(_SEQUENCE, varbinds),

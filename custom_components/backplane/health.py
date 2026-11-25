@@ -21,6 +21,11 @@ POE_WARN = 0.80
 POE_CRIT = 0.95
 CPU_WARN = 80
 REBOOT_INFO_S = 24 * 3600
+UTIL_INFO_PCT = 80
+UTIL_WARN_PCT = 95
+BCAST_WARN_PPS = 1000
+BCAST_CRIT_PPS = 5000
+STP_TC_WARN_PER_H = 3
 
 
 def _finding(level: str, code: str, message: str, port: str | None = None) -> dict[str, Any]:
@@ -60,10 +65,29 @@ def evaluate(data: dict[str, Any]) -> dict[str, Any]:
         hours = max(1, int(uptime // 3600))
         findings.append(_finding(INFO, "reboot", f"Rebooted {hours} h ago"))
 
+    stp = data.get("stp") or {}
+    tc_h = stp.get("tc_h")
+    if isinstance(tc_h, int) and tc_h >= STP_TC_WARN_PER_H:
+        findings.append(_finding(WARNING, "stp_unstable", f"Spanning tree unstable ({tc_h} topology changes in 1 h) - possible loop or flapping link"))
+    elif isinstance(tc_h, int) and tc_h > 0:
+        findings.append(_finding(INFO, "stp_change", "Spanning tree topology changed in the last hour"))
+
     ports = data.get("ports", [])
     by_name = {p["n"]: p for p in ports}
     for port in ports:
         name = port["n"]
+        util = port.get("u")
+        if isinstance(util, (int, float)):
+            if util >= UTIL_WARN_PCT:
+                findings.append(_finding(WARNING, "port_saturated", f"Port {name} saturated ({util:.0f} % of link speed)", name))
+            elif util >= UTIL_INFO_PCT:
+                findings.append(_finding(INFO, "port_busy", f"Port {name} busy ({util:.0f} % of link speed)", name))
+        bcast = port.get("bc")
+        if isinstance(bcast, int):
+            if bcast >= BCAST_CRIT_PPS:
+                findings.append(_finding(CRITICAL, "broadcast_storm", f"Port {name}: broadcast storm ({bcast} pkt/s) - check for a loop", name))
+            elif bcast >= BCAST_WARN_PPS:
+                findings.append(_finding(WARNING, "broadcast_high", f"Port {name}: high broadcast rate ({bcast} pkt/s)", name))
         if port["k"] == "lag":
             members = [by_name[m] for m in port.get("mem", []) if m in by_name]
             down = [m["n"] for m in members if not m["up"]]

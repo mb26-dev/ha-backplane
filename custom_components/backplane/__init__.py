@@ -17,7 +17,7 @@ from .const import CARD_FILENAME, DOMAIN, URL_BASE, VERSION
 from .coordinator import BackplaneCoordinator
 from .health import render_report
 
-PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.BINARY_SENSOR]
+PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.BINARY_SENSOR, Platform.BUTTON]
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 

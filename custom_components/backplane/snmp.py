@@ -35,6 +35,7 @@ PDU_GET = 0xA0
 PDU_GETNEXT = 0xA1
 PDU_RESPONSE = 0xA2
 PDU_GETBULK = 0xA5
+PDU_SET = 0xA3
 
 _ERROR_TOO_BIG = 1
 
@@ -116,6 +117,23 @@ def _enc_oid(oid: Oid) -> bytes:
     return _tlv(_OID, bytes(out))
 
 
+def encode_int_value(value: int) -> bytes:
+    """Encoded INTEGER value for a SET varbind."""
+    return _enc_int(value)
+
+
+def encode_varbinds(items: Iterable[Any]) -> bytes:
+    """Varbind list. Items are OIDs (value NULL) or (oid, encoded_value) pairs."""
+    out = b""
+    for item in items:
+        if len(item) == 2 and isinstance(item[0], tuple) and isinstance(item[1], bytes):
+            oid, value = item
+        else:
+            oid, value = item, _tlv(_NULL, b"")
+        out += _tlv(_SEQUENCE, _enc_oid(oid) + value)
+    return out
+
+
 def encode_request(
     community: str,
     pdu_type: int,
@@ -125,9 +143,7 @@ def encode_request(
     max_repetitions: int = 0,
 ) -> bytes:
     """Build a complete SNMP v2c request message."""
-    varbinds = b"".join(
-        _tlv(_SEQUENCE, _enc_oid(oid) + _tlv(_NULL, b"")) for oid in oids
-    )
+    varbinds = encode_varbinds(oids)
     if pdu_type == PDU_GETBULK:
         field2, field3 = non_repeaters, max_repetitions
     else:
@@ -441,6 +457,10 @@ class SnmpClient:
             if done:
                 break
         return result
+
+    async def set_int(self, oid: Oid, value: int) -> None:
+        """SET a single INTEGER object. Raises SnmpError when the agent refuses."""
+        await self._request(PDU_SET, [(oid, encode_int_value(value))])
 
     def close(self) -> None:
         """Close the UDP socket."""

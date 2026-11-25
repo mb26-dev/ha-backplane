@@ -117,6 +117,9 @@ async def async_setup_entry(
         if description.key.startswith("poe") and not data.get("poe"):
             continue
         entities.append(BackplaneSensor(coordinator, description))
+    for port in data.get("ports", []):
+        for kind in ("rx", "tx", "util"):
+            entities.append(BackplanePortSensor(coordinator, port["i"], port["n"], kind))
     async_add_entities(entities)
 
 
@@ -150,7 +153,7 @@ class BackplaneMapSensor(BackplaneEntity, SensorEntity):
     _attr_translation_key = "port_map"
     _attr_icon = "mdi:switch"
     _unrecorded_attributes = frozenset(
-        {"backplane", "system", "ports", "poe", "sensors", "totals", "ts", "health"}
+        {"backplane", "system", "ports", "poe", "sensors", "totals", "ts", "health", "stp"}
     )
 
     def __init__(self, coordinator: BackplaneCoordinator) -> None:
@@ -174,6 +177,7 @@ class BackplaneMapSensor(BackplaneEntity, SensorEntity):
             "sensors": data["sensors"],
             "totals": data["totals"],
             "health": data.get("health"),
+            "stp": data.get("stp"),
             "ts": data["ts"],
         }
 
@@ -207,3 +211,40 @@ class BackplaneHealthSensor(BackplaneEntity, SensorEntity):
             "warnings": sum(1 for f in health["findings"] if f["level"] == "warning"),
             "findings": health["findings"],
         }
+
+
+class BackplanePortSensor(BackplaneEntity, SensorEntity):
+    """Per-port receive / transmit rate or utilisation (disabled by default)."""
+
+    _attr_entity_registry_enabled_default = False
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(self, coordinator: BackplaneCoordinator, index: int, name: str, kind: str) -> None:
+        super().__init__(coordinator, f"port_{index}_{kind}")
+        self._index = index
+        self._kind = kind
+        self._attr_translation_key = f"port_{kind}"
+        self._attr_translation_placeholders = {"port": name}
+        if kind == "util":
+            self._attr_native_unit_of_measurement = PERCENTAGE
+            self._attr_suggested_display_precision = 1
+            self._attr_icon = "mdi:gauge"
+        else:
+            self._attr_native_unit_of_measurement = UnitOfDataRate.MEGABITS_PER_SECOND
+            self._attr_device_class = SensorDeviceClass.DATA_RATE
+            self._attr_suggested_display_precision = 2
+
+    def _port(self) -> dict | None:
+        for port in (self.coordinator.data or {}).get("ports", []):
+            if port["i"] == self._index:
+                return port
+        return None
+
+    @property
+    def native_value(self) -> float | None:
+        port = self._port()
+        if port is None:
+            return None
+        if self._kind == "util":
+            return port.get("u", 0.0) if port["up"] else 0.0
+        return _mbit(port["in"] if self._kind == "rx" else port["out"])

@@ -87,6 +87,15 @@
       },
       "health": {
         "name": "Health"
+      },
+      "port_rx": {
+        "name": "Port {port} Empfang"
+      },
+      "port_tx": {
+        "name": "Port {port} Senden"
+      },
+      "port_util": {
+        "name": "Port {port} Auslastung"
       }
     },
     "binary_sensor": {
@@ -95,6 +104,11 @@
       },
       "port_link": {
         "name": "Port {port} link"
+      }
+    },
+    "button": {
+      "poe_restart": {
+        "name": "Port {port} PoE neu starten"
       }
     }
   },
@@ -124,6 +138,14 @@
         "aes": "AES-128",
         "des": "DES"
       }
+    }
+  },
+  "exceptions": {
+    "poe_refused": {
+      "message": "Der Switch hat das Schalten von PoE abgelehnt. Der SNMP-User bzw. die Community braucht Schreibrechte (bei HP/Aruba: SNMPv3-User in der Gruppe managerpriv)."
+    },
+    "poe_timeout": {
+      "message": "Keine Antwort vom Switch beim Schalten von PoE."
     }
   }
 }
