@@ -31,6 +31,7 @@
 - **Topology** - devices in one card that see each other via LLDP are connected with an animated link line (ports, speed, live traffic)
 - **Health score** - 0-100 per device with findings: hardware failures, PoE budget, rising error/CRC counters, flapping ports, half duplex, degraded trunks, saturated ports, broadcast storms, spanning-tree instability (loops), high CPU, recent reboots
 - **PoE restart** - one button per PoE port power-cycles the connected device (camera, access point, phone); needs SNMP write access
+- **Data volume per day** - GB received and sent today per port and per device, resets at local midnight and survives restarts; shown on the card, in the health report and as sensors
 - **Per-port sensors** - receive / transmit rate and utilisation per port for long-term statistics (disabled by default, enable the ports you care about)
 - **Health report** - `backplane.health_report` returns an e-mail ready HTML report (plus plain text and structured findings)
 - **Hardware health** - power supply / fan status (HP/Aruba ProCurve)
@@ -142,6 +143,7 @@ Options: polling interval (default 30 s, 10-600 s), port events on/off and an op
 | `binary_sensor.<switch>_health_problem` | On when there is a warning or critical finding |
 | `binary_sensor.<switch>_power_supply` / `_fan` | Hardware problem (HP/Aruba) |
 | `binary_sensor.<switch>_port_<n>_link` | Link state per port with speed, traffic, devices (disabled by default) |
+| `sensor.<switch>_volume_today_in` / `_out` | Data volume today in GB (all physical ports, resets at midnight) |
 | `sensor.<switch>_port_<n>_receive` / `_transmit` | Traffic per port in Mbit/s (disabled by default) |
 | `sensor.<switch>_port_<n>_utilisation` | Port utilisation in % of link speed (disabled by default) |
 | `button.<switch>_port_<n>_poe_restart` | Power-cycle PoE on the port for 5 s (disabled by default, needs write access) |

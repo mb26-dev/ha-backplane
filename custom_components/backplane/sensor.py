@@ -17,6 +17,7 @@ from homeassistant.const import (
     PERCENTAGE,
     EntityCategory,
     UnitOfDataRate,
+    UnitOfInformation,
     UnitOfPower,
 )
 from homeassistant.core import HomeAssistant
@@ -57,6 +58,24 @@ SENSORS: tuple[BackplaneSensorDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=2,
         value_fn=lambda d: _mbit(d["totals"]["out"]),
+    ),
+    BackplaneSensorDescription(
+        key="volume_today_in",
+        translation_key="volume_today_in",
+        native_unit_of_measurement=UnitOfInformation.GIGABYTES,
+        device_class=SensorDeviceClass.DATA_SIZE,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        suggested_display_precision=2,
+        value_fn=lambda d: round(d["totals"]["day_in"] / 1e9, 3),
+    ),
+    BackplaneSensorDescription(
+        key="volume_today_out",
+        translation_key="volume_today_out",
+        native_unit_of_measurement=UnitOfInformation.GIGABYTES,
+        device_class=SensorDeviceClass.DATA_SIZE,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        suggested_display_precision=2,
+        value_fn=lambda d: round(d["totals"]["day_out"] / 1e9, 3),
     ),
     BackplaneSensorDescription(
         key="ports_up",

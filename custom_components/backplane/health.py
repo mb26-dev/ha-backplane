@@ -128,6 +128,13 @@ _LEVEL_COLOR = {CRITICAL: "#ff5252", WARNING: "#ffb300", INFO: "#40c4ff"}
 _GRADE_COLOR = {"healthy": "#69f0ae", "warning": "#ffb300", "critical": "#ff5252"}
 
 
+def _fmt_bytes(value: float) -> str:
+    for unit, size in (("TB", 1e12), ("GB", 1e9), ("MB", 1e6)):
+        if value >= size:
+            return f"{value / size:.2f} {unit}" if unit != "MB" else f"{value / size:.0f} {unit}"
+    return f"{value / 1e3:.0f} kB"
+
+
 def _fmt_rate(bps: float) -> str:
     for unit, div in (("Gb/s", 1e9), ("Mb/s", 1e6), ("kb/s", 1e3)):
         if bps >= div:
@@ -192,6 +199,7 @@ def render_report(devices: list[dict[str, Any]]) -> tuple[str, str]:
     <td>Uptime<br><b style="color:#ffd700;">{_fmt_uptime(sysd['uptime'])}</b></td>
     <td>Ports up<br><b style="color:#ffd700;">{totals['up']}/{totals['total']}</b></td>
     <td>Traffic<br><b style="color:#ffd700;">{_fmt_rate(totals['in'])}</b></td>
+    <td>Today<br><b style="color:#ffd700;">{_fmt_bytes(totals.get('day_in', 0) + totals.get('day_out', 0))}</b></td>
     <td>CPU<br><b style="color:#ffd700;">{cpu if cpu is not None else '-'}{' %' if cpu is not None else ''}</b></td>
     <td>PoE<br><b style="color:#ffd700;">{poe_cell}</b></td>
   </tr>

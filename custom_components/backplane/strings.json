@@ -96,6 +96,12 @@
       },
       "port_util": {
         "name": "Port {port} utilisation"
+      },
+      "volume_today_in": {
+        "name": "Volume today in"
+      },
+      "volume_today_out": {
+        "name": "Volume today out"
       }
     },
     "binary_sensor": {

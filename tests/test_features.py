@@ -131,3 +131,11 @@ def test_v3_wrong_digest_report_with_request_id_zero():
 
     message = asyncio.run(run())
     assert "wrong digest" in message
+
+
+def test_report_shows_day_volume():
+    data = _base(totals={"in": 1_000_000, "out": 0, "up": 1, "total": 2, "day_in": 3_000_000_000, "day_out": 1_500_000_000})
+    data.update(title="sw", health=health.evaluate(data))
+    data["system"].update(host="10.0.0.2", model="m", firmware="f")
+    html, _ = health.render_report([data])
+    assert "Today" in html and "4.50 GB" in html

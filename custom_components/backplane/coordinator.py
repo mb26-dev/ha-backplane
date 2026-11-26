@@ -15,6 +15,8 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_PORT
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers.storage import Store
+from homeassistant.util import dt as dt_util
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import (
@@ -236,6 +238,13 @@ class BackplaneCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._prev_oper: dict[int, int] = {}
         self._bcast: dict[int, tuple[float, int]] = {}
         self._stp_hist: deque[tuple[float, int]] = deque()
+        # data volume per local day, persisted across restarts
+        self._vol_store: Store[dict[str, Any]] = Store(
+            hass, 1, f"{DOMAIN}.volume.{entry.entry_id}"
+        )
+        self._vol: dict[int, list[int]] = {}
+        self._vol_day: str | None = None
+        self._vol_loaded = False
         custom = (entry.options.get(CONF_PORT_FILTER) or "").strip()
         try:
             self._port_filter = re.compile(custom) if custom else None
@@ -247,7 +256,28 @@ class BackplaneCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def async_shutdown(self) -> None:
         """Close the socket when the entry unloads."""
         await super().async_shutdown()
+        if self._vol_loaded:
+            await self._vol_store.async_save(self._vol_data())
         self.client.close()
+
+    def _vol_data(self) -> dict[str, Any]:
+        return {"day": self._vol_day, "ports": {str(k): v for k, v in self._vol.items()}}
+
+    async def _vol_prepare(self) -> None:
+        """Load the stored day volume once and roll over at local midnight."""
+        today = dt_util.now().date().isoformat()
+        if not self._vol_loaded:
+            self._vol_loaded = True
+            stored = await self._vol_store.async_load()
+            if stored and stored.get("day") == today:
+                self._vol = {
+                    int(k): [int(v[0]), int(v[1])]
+                    for k, v in (stored.get("ports") or {}).items()
+                }
+                self._vol_day = today
+        if self._vol_day != today:
+            self._vol = {}
+            self._vol_day = today
 
     # ------------------------------------------------------------ discovery
 
@@ -491,6 +521,7 @@ class BackplaneCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def _poll(self, info: StaticInfo) -> dict[str, Any]:
         client = self.client
+        await self._vol_prepare()
         indexes = sorted(info.ports)
 
         oids: list[Oid] = [SYS_UPTIME]
@@ -554,6 +585,7 @@ class BackplaneCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         up_count = 0
         eth_count = 0
         poe_ports = 0
+        day_in = day_out = 0
         for index in indexes:
             meta = info.ports[index]
             oper = values.get(IF_OPER_STATUS + (index,))
@@ -571,6 +603,9 @@ class BackplaneCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     if elapsed > 0 and d_in >= 0 and d_out >= 0:
                         rate_in = d_in * 8 / elapsed
                         rate_out = d_out * 8 / elapsed
+                        volume = self._vol.setdefault(index, [0, 0])
+                        volume[0] += d_in
+                        volume[1] += d_out
                 self._counters[index] = (now, hc_in, hc_out)
             is_up = oper == 1
             port: dict[str, Any] = {
@@ -583,6 +618,7 @@ class BackplaneCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "spd": int(speed) if is_up else 0,
                 "in": round(rate_in),
                 "out": round(rate_out),
+                "vd": list(self._vol.get(index, (0, 0))),
                 "ie": int(values.get(IF_IN_ERRORS + (index,), 0) or 0),
                 "oe": int(values.get(IF_OUT_ERRORS + (index,), 0) or 0),
             }
@@ -650,6 +686,8 @@ class BackplaneCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     up_count += 1
                 total_in += rate_in
                 total_out += rate_out
+                day_in += port["vd"][0]
+                day_out += port["vd"][1]
                 detection = values.get(PETH_PORT_DETECTION + (index,))
                 if isinstance(detection, int):
                     state = PETH_DETECTION_STATES.get(detection, "unknown")
@@ -728,8 +766,11 @@ class BackplaneCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "out": round(total_out),
                 "up": up_count,
                 "total": eth_count,
+                "day_in": day_in,
+                "day_out": day_out,
             },
             "ts": int(now),
         }
         data["health"] = evaluate(data)
+        self._vol_store.async_delay_save(self._vol_data, 120)
         return data

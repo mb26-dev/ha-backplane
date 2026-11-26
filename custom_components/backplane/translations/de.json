@@ -96,6 +96,12 @@
       },
       "port_util": {
         "name": "Port {port} Auslastung"
+      },
+      "volume_today_in": {
+        "name": "Datenvolumen heute empfangen"
+      },
+      "volume_today_out": {
+        "name": "Datenvolumen heute gesendet"
       }
     },
     "binary_sensor": {

@@ -2,7 +2,7 @@
  * Backplane card - live switch front panel for Home Assistant.
  * Served by the Backplane integration (custom_components/backplane).
  */
-const BP_VERSION = "0.6.0";
+const BP_VERSION = "0.7.0";
 
 const SPEED_COLORS = [
   [10000, "#00e5ff"],
@@ -55,6 +55,15 @@ const fmtRate = (bps) => {
   }
   const digits = value >= 100 ? 0 : value >= 10 ? 1 : 2;
   return `${value.toFixed(digits)} ${units[unit]}`;
+};
+
+const fmtBytes = (bytes) => {
+  const b = Number(bytes) || 0;
+  if (b >= 1e12) return `${(b / 1e12).toFixed(2)} TB`;
+  if (b >= 1e9) return `${(b / 1e9).toFixed(2)} GB`;
+  if (b >= 1e6) return `${(b / 1e6).toFixed(1)} MB`;
+  if (b >= 1e3) return `${(b / 1e3).toFixed(0)} kB`;
+  return `${b} B`;
 };
 
 const fmtUptime = (seconds) => {
@@ -422,6 +431,9 @@ class BackplaneCard extends HTMLElement {
       sys.cpu != null ? `<span class="chip">CPU <b>${esc(sys.cpu)}%</b></span>` : "",
       `<span class="chip">Ports <b>${esc(totals.up)}/${esc(totals.total)}</b></span>`,
       `<span class="chip">&darr; <b>${esc(fmtRate(totals.in))}</b> &uarr; <b>${esc(fmtRate(totals.out))}</b></span>`,
+      totals.day_in != null
+        ? `<span class="chip">Today <b>&darr;${esc(fmtBytes(totals.day_in))} &uarr;${esc(fmtBytes(totals.day_out))}</b></span>`
+        : "",
       poe ? `<span class="chip">PoE <b>${esc(poe.used)}/${esc(poe.budget)} W</b></span>` : "",
       a.health ? `<span class="chip ${a.health.grade === "critical" ? "bad" : ""}">Health <b style="color:${GRADE_COLORS[a.health.grade]}">${esc(a.health.score)}</b></span>` : "",
       ...badSensors.map((s) => `<span class="chip bad">${esc(s.name)}: ${esc(s.status)}</span>`),
@@ -823,6 +835,7 @@ class BackplaneCard extends HTMLElement {
       kv("Speed", port.up ? speedLabel(port.spd) : "-", port.up ? speedColor(port.spd) : null),
       kv("In", fmtRate(port.in), IN_COLOR),
       kv("Out", fmtRate(port.out), OUT_COLOR),
+      port.vd ? kv("Today", `\u2193 ${fmtBytes(port.vd[0])}  \u2191 ${fmtBytes(port.vd[1])}`) : "",
       kv("Utilization", util),
       kv("Errors in/out", `${port.ie} / ${port.oe}`, port.ie || port.oe ? "#ffb300" : null),
       port.err_h != null ? kv("Errors last hour", port.err_h, port.err_h ? "#ffb300" : null) : "",
