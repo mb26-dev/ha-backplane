@@ -2,7 +2,7 @@
  * Backplane card - live switch front panel for Home Assistant.
  * Served by the Backplane integration (custom_components/backplane).
  */
-const BP_VERSION = "0.7.0";
+const BP_VERSION = "0.7.1";
 
 const SPEED_COLORS = [
   [10000, "#00e5ff"],
@@ -45,9 +45,10 @@ const speedLabel = (mbit) => {
 };
 
 const fmtRate = (bps) => {
-  if (!bps || bps < 1) return "0 b/s";
+  const n = Number(bps);
+  if (!Number.isFinite(n) || n < 1) return "0 b/s";
   const units = ["b/s", "kb/s", "Mb/s", "Gb/s"];
-  let value = bps;
+  let value = n;
   let unit = 0;
   while (value >= 1000 && unit < units.length - 1) {
     value /= 1000;
@@ -55,6 +56,14 @@ const fmtRate = (bps) => {
   }
   const digits = value >= 100 ? 0 : value >= 10 ? 1 : 2;
   return `${value.toFixed(digits)} ${units[unit]}`;
+};
+
+// port data comes from the switch over SNMP: numeric fields are forced to numbers, the index to an integer
+const PORT_NUMERIC = ["in", "out", "spd", "pw", "ie", "oe", "bc", "util"];
+const normPort = (p) => {
+  const out = { ...p, i: parseInt(p.i, 10) || 0 };
+  for (const k of PORT_NUMERIC) if (k in out && out[k] != null) { const v = Number(out[k]); out[k] = Number.isFinite(v) ? v : 0; }
+  return out;
 };
 
 const fmtBytes = (bytes) => {
@@ -414,7 +423,7 @@ class BackplaneCard extends HTMLElement {
     }
     const offline = state.state === "unavailable";
     const names = item.port_names || {};
-    const ports = a.ports.map((p) => (names[p.n] ? { ...p, a: String(names[p.n]) } : p));
+    const ports = a.ports.map(normPort).map((p) => (names[p.n] ? { ...p, a: String(names[p.n]) } : p));
     const eth = ports.filter((p) => p.k === "eth");
     const lags = ports.filter((p) => p.k === "lag");
     const lagColor = {};
