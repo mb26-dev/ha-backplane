@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/hacs/integration"><img src="https://img.shields.io/badge/HACS-Custom-41BDF5.svg" alt="HACS Custom"></a>
+  <a href="https://github.com/hacs/integration"><img src="https://img.shields.io/badge/HACS-Default-41BDF5.svg" alt="HACS Default"></a>
   <a href="https://github.com/mb26-dev/ha-backplane/releases"><img src=".github/badge-release.svg" alt="Release v0.7.1"></a>
   <img src="https://img.shields.io/badge/SNMP-v2c%20%7C%20v3-ffd700" alt="SNMP v2c | v3">
 </p>
