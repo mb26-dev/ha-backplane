@@ -9,7 +9,7 @@
 
 <p align="center">
   <a href="https://github.com/hacs/integration"><img src="https://img.shields.io/badge/HACS-Custom-41BDF5.svg" alt="HACS Custom"></a>
-  <img src="https://img.shields.io/github/v/release/mb26-dev/ha-backplane" alt="Release">
+  <a href="https://github.com/mb26-dev/ha-backplane/releases"><img src="https://img.shields.io/badge/release-v0.7.1-blue" alt="Release v0.7.1"></a>
   <img src="https://img.shields.io/badge/SNMP-v2c%20%7C%20v3-ffd700" alt="SNMP v2c | v3">
 </p>
 
